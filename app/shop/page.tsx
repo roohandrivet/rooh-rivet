@@ -1,9 +1,12 @@
-import Image from "next/image";
 import Link from "next/link";
 import { Search } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 
+import { createClient } from "@/lib/supabase/server";
 import ProductGrid from "@/components/ProductGrid";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 type Product = {
   id: string;
@@ -17,19 +20,36 @@ type Product = {
 };
 
 export default async function ShopPage() {
+  const supabase =
+    await createClient();
+
   const {
     data,
     error,
   } = await supabase
     .from("products")
-    .select("*")
+    .select(
+      `
+        id,
+        slug,
+        name,
+        description,
+        price,
+        image,
+        featured,
+        category
+      `
+    )
     .eq("active", true)
     .order("created_at", {
       ascending: false,
     });
 
   if (error) {
-    console.error(error);
+    console.error(
+      "Failed to load shop products:",
+      error
+    );
   }
 
   const products =
@@ -39,7 +59,7 @@ export default async function ShopPage() {
     <main className="min-h-screen bg-[#F8F4EF]">
       <section className="px-8 py-24 text-center">
         <p className="text-sm uppercase tracking-[8px] text-[#8B6B5B]">
-          Rooh & Rivet
+          Rooh &amp; Rivet
         </p>
 
         <h1 className="mt-6 font-serif text-6xl text-[#4B2E2E]">
@@ -47,8 +67,10 @@ export default async function ShopPage() {
         </h1>
 
         <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[#7A6464]">
-          Discover handcrafted jewellery designed with elegance,
-          sophistication and timeless beauty.
+          Discover handcrafted jewellery
+          designed with elegance,
+          sophistication and timeless
+          beauty.
         </p>
       </section>
 
@@ -92,9 +114,19 @@ export default async function ShopPage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-8 py-20">
-        <ProductGrid products={products} />
+        {error ? (
+          <div className="rounded-3xl border border-red-200 bg-red-50 px-6 py-10 text-center text-red-700">
+            Products could not be loaded.
+            Please refresh the page.
+          </div>
+        ) : (
+          <ProductGrid
+            products={products}
+          />
+        )}
       </section>
-            <section className="bg-white py-24">
+
+      <section className="bg-white py-24">
         <div className="mx-auto max-w-7xl px-8">
           <div className="text-center">
             <p className="text-sm uppercase tracking-[8px] text-[#8B6B5B]">
@@ -106,7 +138,8 @@ export default async function ShopPage() {
             </h2>
 
             <p className="mx-auto mt-6 max-w-3xl leading-8 text-[#7A6464]">
-              We believe every piece of jewellery should feel timeless,
+              We believe every piece of
+              jewellery should feel timeless,
               elegant and unforgettable.
             </p>
           </div>
@@ -122,7 +155,8 @@ export default async function ShopPage() {
               </h3>
 
               <p className="mt-6 leading-8 text-[#7A6464]">
-                Every design is handcrafted with precision and care by
+                Every design is handcrafted
+                with precision and care by
                 skilled artisans.
               </p>
             </div>
@@ -137,8 +171,9 @@ export default async function ShopPage() {
               </h3>
 
               <p className="mt-6 leading-8 text-[#7A6464]">
-                Complimentary delivery across India with secure luxury
-                packaging.
+                Complimentary delivery
+                across India with secure
+                luxury packaging.
               </p>
             </div>
 
@@ -152,8 +187,9 @@ export default async function ShopPage() {
               </h3>
 
               <p className="mt-6 leading-8 text-[#7A6464]">
-                Beautiful jewellery presented in premium gift boxes for
-                every celebration.
+                Beautiful jewellery
+                presented in premium gift
+                boxes for every celebration.
               </p>
             </div>
           </div>
@@ -172,8 +208,10 @@ export default async function ShopPage() {
             </h2>
 
             <p className="mx-auto mt-6 max-w-2xl leading-8 text-[#F5E7E0]">
-              Be the first to discover new collections, exclusive launches
-              and members-only offers.
+              Be the first to discover new
+              collections, exclusive
+              launches and members-only
+              offers.
             </p>
 
             <div className="mt-12 flex flex-col justify-center gap-4 md:flex-row">
@@ -190,16 +228,20 @@ export default async function ShopPage() {
           </div>
         </div>
       </section>
+
       <section className="pb-24">
         <div className="mx-auto max-w-7xl px-8">
           <div className="rounded-[40px] bg-gradient-to-r from-[#5A2D2D] to-[#7B4B4B] p-20 text-center text-white shadow-2xl">
             <h2 className="font-serif text-5xl">
-              Discover Jewellery That Lasts Forever
+              Discover Jewellery That
+              Lasts Forever
             </h2>
 
             <p className="mx-auto mt-8 max-w-3xl text-lg leading-8 text-[#F5E7E0]">
-              Explore handcrafted luxury jewellery designed to celebrate
-              life's most meaningful moments.
+              Explore handcrafted luxury
+              jewellery designed to
+              celebrate life&apos;s most
+              meaningful moments.
             </p>
 
             <Link

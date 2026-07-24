@@ -1,50 +1,66 @@
-// lib/supabase/server.ts
-
 import { cookies } from "next/headers";
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { createServerClient } from "@supabase/ssr";
+
+function getSupabaseUrl(): string {
+  const value =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+
+  if (!value) {
+    throw new Error(
+      "Missing NEXT_PUBLIC_SUPABASE_URL"
+    );
+  }
+
+  return value;
+}
+
+function getSupabaseKey(): string {
+  const value =
+    process.env
+      .NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env
+      .NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!value) {
+    throw new Error(
+      "Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY"
+    );
+  }
+
+  return value;
+}
 
 export async function createClient() {
   const cookieStore = await cookies();
 
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    getSupabaseUrl(),
+    getSupabaseKey(),
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
+        getAll() {
+          return cookieStore.getAll();
         },
 
-        set(
-          name: string,
-          value: string,
-          options: CookieOptions
-        ) {
+        setAll(cookiesToSet) {
           try {
-            cookieStore.set({
-              name,
-              value,
-              ...options,
-            });
+            cookiesToSet.forEach(
+              ({
+                name,
+                value,
+                options,
+              }) => {
+                cookieStore.set(
+                  name,
+                  value,
+                  options
+                );
+              }
+            );
           } catch {
-            // Called from a Server Component.
-            // Middleware is responsible for refreshing cookies.
-          }
-        },
-
-        remove(
-          name: string,
-          options: CookieOptions
-        ) {
-          try {
-            cookieStore.set({
-              name,
-              value: "",
-              ...options,
-              maxAge: 0,
-            });
-          } catch {
-            // Called from a Server Component.
+            // Cookies cannot be written from
+            // a Server Component.
+            // Proxy middleware refreshes sessions.
           }
         },
       },
