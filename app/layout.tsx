@@ -1,30 +1,37 @@
-import type { Metadata } from "next";
+import type {
+  Metadata,
+} from "next";
 import {
   Geist,
   Geist_Mono,
 } from "next/font/google";
 
-import Navbar from "@/components/Navbar";
+import AnnouncementBar from "@/components/AnnouncementBar";
 import Footer from "@/components/Footer";
+import Navbar from "@/components/Navbar";
 import Providers from "@/components/Providers";
 
 import "./globals.css";
 
 const geist = Geist({
-  variable: "--font-geist",
+  variable:
+    "--font-geist",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const geistMono =
+  Geist_Mono({
+    variable:
+      "--font-geist-mono",
+    subsets: ["latin"],
+  });
 
 const siteUrl =
   "https://roohandrivet.com";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase:
+    new URL(siteUrl),
 
   title: {
     default:
@@ -50,52 +57,75 @@ export const metadata: Metadata = {
 
   authors: [
     {
-      name: "Rooh & Rivet",
-      url: siteUrl,
+      name:
+        "Rooh & Rivet",
+
+      url:
+        siteUrl,
     },
   ],
 
-  creator: "Rooh & Rivet",
+  creator:
+    "Rooh & Rivet",
 
-  publisher: "Rooh & Rivet",
+  publisher:
+    "Rooh & Rivet",
 
   alternates: {
-    canonical: siteUrl,
+    canonical:
+      siteUrl,
   },
 
   icons: {
     icon: [
       {
-        url: "/logo-icon.png",
-        type: "image/png",
-        sizes: "512x512",
+        url:
+          "/logo-icon.png",
+
+        type:
+          "image/png",
+
+        sizes:
+          "512x512",
       },
     ],
 
     shortcut: [
       {
-        url: "/logo-icon.png",
-        type: "image/png",
+        url:
+          "/logo-icon.png",
+
+        type:
+          "image/png",
       },
     ],
 
     apple: [
       {
-        url: "/logo-icon.png",
-        type: "image/png",
-        sizes: "512x512",
+        url:
+          "/logo-icon.png",
+
+        type:
+          "image/png",
+
+        sizes:
+          "512x512",
       },
     ],
   },
 
   openGraph: {
-    type: "website",
+    type:
+      "website",
 
-    locale: "en_IN",
+    locale:
+      "en_IN",
 
-    url: siteUrl,
+    url:
+      siteUrl,
 
-    siteName: "Rooh & Rivet",
+    siteName:
+      "Rooh & Rivet",
 
     title:
       "Rooh & Rivet | Luxury Handcrafted Jewellery",
@@ -105,9 +135,15 @@ export const metadata: Metadata = {
 
     images: [
       {
-        url: "/og-image.jpg",
-        width: 1200,
-        height: 630,
+        url:
+          "/og-image.jpg",
+
+        width:
+          1200,
+
+        height:
+          630,
+
         alt:
           "Rooh & Rivet Luxury Jewellery",
       },
@@ -115,7 +151,8 @@ export const metadata: Metadata = {
   },
 
   twitter: {
-    card: "summary_large_image",
+    card:
+      "summary_large_image",
 
     title:
       "Rooh & Rivet | Luxury Handcrafted Jewellery",
@@ -129,15 +166,27 @@ export const metadata: Metadata = {
   },
 
   robots: {
-    index: true,
-    follow: true,
+    index:
+      true,
+
+    follow:
+      true,
 
     googleBot: {
-      index: true,
-      follow: true,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-      "max-video-preview": -1,
+      index:
+        true,
+
+      follow:
+        true,
+
+      "max-image-preview":
+        "large",
+
+      "max-snippet":
+        -1,
+
+      "max-video-preview":
+        -1,
     },
   },
 };
@@ -168,7 +217,8 @@ const organizationSchema = {
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children:
+    React.ReactNode;
 }>) {
   return (
     <html lang="en-IN">
@@ -186,6 +236,8 @@ export default function RootLayout({
         />
 
         <Providers>
+          <AnnouncementBar />
+
           <Navbar />
 
           {children}

@@ -2,77 +2,511 @@ import Link from "next/link";
 import {
   ArrowRight,
   CheckCircle2,
+  CreditCard,
   Package,
+  ReceiptText,
   Sparkles,
+  Tag,
   User,
 } from "lucide-react";
+import {
+  redirect,
+} from "next/navigation";
 
-import { supabase } from "@/lib/supabase";
+import {
+  createClient,
+} from "@/lib/supabase/server";
 
-export default async function OrderSuccessPage() {
+export const dynamic =
+  "force-dynamic";
+
+export const revalidate = 0;
+
+type OrderSuccessPageProps = {
+  searchParams: Promise<{
+    id?:
+      | string
+      | string[];
+  }>;
+};
+
+type OrderRow = {
+  id: string;
+  user_id:
+    | string
+    | null;
+  customer_name:
+    | string
+    | null;
+  email:
+    | string
+    | null;
+  subtotal:
+    | number
+    | string
+    | null;
+  coupon_code:
+    | string
+    | null;
+  discount_amount:
+    | number
+    | string
+    | null;
+  total:
+    | number
+    | string
+    | null;
+  payment_method:
+    | string
+    | null;
+  payment_status:
+    | string
+    | null;
+  status:
+    | string
+    | null;
+  created_at:
+    | string
+    | null;
+};
+
+function toNumber(
+  value:
+    | number
+    | string
+    | null
+    | undefined
+): number {
+  const parsed =
+    Number(value);
+
+  return Number.isFinite(
+    parsed
+  )
+    ? parsed
+    : 0;
+}
+
+function formatCurrency(
+  amount: number
+): string {
+  return new Intl.NumberFormat(
+    "en-IN",
+    {
+      style: "currency",
+      currency: "INR",
+      minimumFractionDigits:
+        Number.isInteger(amount)
+          ? 0
+          : 2,
+      maximumFractionDigits: 2,
+    }
+  ).format(amount);
+}
+
+function formatOrderDate(
+  value:
+    | string
+    | null
+): string {
+  if (!value) {
+    return "";
+  }
+
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "";
+  }
+
+  return date.toLocaleString(
+    "en-IN",
+    {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }
+  );
+}
+
+function getStatusClasses(
+  status: string
+): string {
+  const normalizedStatus =
+    status.toLowerCase();
+
+  if (
+    normalizedStatus ===
+      "confirmed" ||
+    normalizedStatus ===
+      "paid" ||
+    normalizedStatus ===
+      "completed"
+  ) {
+    return "bg-emerald-100 text-emerald-700";
+  }
+
+  if (
+    normalizedStatus ===
+      "cancelled" ||
+    normalizedStatus ===
+      "failed" ||
+    normalizedStatus ===
+      "refunded"
+  ) {
+    return "bg-red-100 text-red-700";
+  }
+
+  if (
+    normalizedStatus ===
+      "shipped" ||
+    normalizedStatus ===
+      "delivered"
+  ) {
+    return "bg-blue-100 text-blue-700";
+  }
+
+  return "bg-amber-100 text-amber-700";
+}
+
+export default async function OrderSuccessPage({
+  searchParams,
+}: OrderSuccessPageProps) {
+  const params =
+    await searchParams;
+
+  const orderId =
+    Array.isArray(params.id)
+      ? params.id[0]
+      : params.id;
+
+  if (!orderId) {
+    redirect(
+      "/account/orders"
+    );
+  }
+
+  const supabase =
+    await createClient();
+
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    data: {
+      user,
+    },
+  } =
+    await supabase.auth.getUser();
+
+  if (!user) {
+    redirect(
+      `/auth/login?redirect=${encodeURIComponent(
+        `/order-success?id=${orderId}`
+      )}`
+    );
+  }
+
+  const {
+    data,
+    error,
+  } = await supabase
+    .from("orders")
+    .select(
+      `
+        id,
+        user_id,
+        customer_name,
+        email,
+        subtotal,
+        coupon_code,
+        discount_amount,
+        total,
+        payment_method,
+        payment_status,
+        status,
+        created_at
+      `
+    )
+    .eq(
+      "id",
+      orderId
+    )
+    .eq(
+      "user_id",
+      user.id
+    )
+    .maybeSingle();
+
+  if (
+    error ||
+    !data
+  ) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F8F4EF] px-6 py-20">
+        <div className="w-full max-w-2xl rounded-[36px] border border-[#E8DDD3] bg-white p-10 text-center shadow-xl sm:p-14">
+          <ReceiptText
+            size={56}
+            className="mx-auto text-[#5A2D2D]"
+          />
+
+          <h1 className="mt-8 font-serif text-4xl text-[#4B2E2E]">
+            Order Not Found
+          </h1>
+
+          <p className="mt-5 leading-7 text-[#7A6464]">
+            We could not load this
+            order. It may not belong
+            to the signed-in account,
+            or the order reference may
+            be incorrect.
+          </p>
+
+          <Link
+            href="/account/orders"
+            className="mt-8 inline-flex items-center justify-center gap-2 rounded-full bg-[#5A2D2D] px-8 py-4 text-white transition hover:bg-[#472323]"
+          >
+            View My Orders
+
+            <ArrowRight
+              size={18}
+            />
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  const order =
+    data as OrderRow;
+
+  const subtotal =
+    toNumber(
+      order.subtotal
+    );
+
+  const discountAmount =
+    toNumber(
+      order.discount_amount
+    );
+
+  const total =
+    toNumber(
+      order.total
+    );
 
   const customerName =
-    user?.user_metadata?.full_name ??
-    user?.email?.split("@")[0] ??
+    order.customer_name?.trim() ||
+    user.user_metadata
+      ?.full_name ||
+    user.email?.split(
+      "@"
+    )[0] ||
     "Valued Customer";
 
+  const orderStatus =
+    order.status?.trim() ||
+    "Pending";
+
+  const paymentStatus =
+    order.payment_status?.trim() ||
+    "Pending";
+
+  const paymentMethod =
+    order.payment_method?.trim() ||
+    "Not specified";
+
+  const orderDate =
+    formatOrderDate(
+      order.created_at
+    );
+
   return (
-    <main className="min-h-screen bg-[#F8F4EF] flex items-center justify-center px-8 py-20">
-      <div className="w-full max-w-4xl rounded-[40px] bg-white p-12 text-center shadow-2xl">
+    <main className="min-h-screen bg-[#F8F4EF] px-6 py-16 sm:px-8 sm:py-20">
+      <div className="mx-auto w-full max-w-5xl rounded-[40px] border border-[#E8DDD3] bg-white p-7 text-center shadow-2xl sm:p-12">
         <div className="flex justify-center">
-          <div className="flex h-28 w-28 items-center justify-center rounded-full bg-green-100">
+          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-emerald-100 sm:h-28 sm:w-28">
             <CheckCircle2
-              size={70}
-              className="text-green-600"
+              size={66}
+              className="text-emerald-600"
             />
           </div>
         </div>
 
-        <p className="mt-10 text-sm uppercase tracking-[8px] text-[#8B6B5B]">
+        <p className="mt-10 text-xs uppercase tracking-[0.55em] text-[#8B6B5B] sm:text-sm">
           Thank You
         </p>
 
-        <h1 className="mt-6 font-serif text-6xl text-[#4B2E2E]">
+        <h1 className="mt-6 font-serif text-4xl text-[#4B2E2E] sm:text-6xl">
           Order Confirmed
         </h1>
 
-        <p className="mt-5 text-xl text-[#4B2E2E]">
-          {customerName},
-          your order has been received.
+        <p className="mt-5 text-lg text-[#4B2E2E] sm:text-xl">
+          {customerName}, your order
+          has been received.
         </p>
 
-        <p className="mt-8 text-lg leading-8 text-[#7A6464]">
-          Thank you for choosing
-          Rooh & Rivet.
-          Your handcrafted jewellery
-          is now being prepared by our
-          artisans with exceptional
-          care and attention.
+        <p className="mx-auto mt-7 max-w-3xl text-base leading-8 text-[#7A6464] sm:text-lg">
+          Thank you for choosing Rooh
+          &amp; Rivet. Your jewellery
+          will be prepared with
+          exceptional care and
+          attention before dispatch.
         </p>
 
-        <div className="mt-12 rounded-3xl bg-[#F8F4EF] p-8">
-          <p className="text-sm uppercase tracking-[4px] text-[#8B6B5B]">
-            What's Next?
+        <section className="mt-10 rounded-3xl border border-[#E8DDD3] bg-[#FCFAF8] p-6 text-left sm:p-8">
+          <div className="flex flex-col gap-4 border-b border-[#E8DDD3] pb-6 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8B6B5B]">
+                Order Reference
+              </p>
+
+              <p className="mt-2 break-all font-serif text-xl text-[#4B2E2E] sm:text-2xl">
+                #{order.id}
+              </p>
+
+              {orderDate ? (
+                <p className="mt-2 text-sm text-[#8B6B5B]">
+                  Placed on{" "}
+                  {orderDate}
+                </p>
+              ) : null}
+            </div>
+
+            <span
+              className={`w-fit rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] ${getStatusClasses(
+                orderStatus
+              )}`}
+            >
+              {orderStatus}
+            </span>
+          </div>
+
+          <div className="mt-6 grid gap-5 md:grid-cols-2">
+            <div className="rounded-2xl bg-white p-5">
+              <div className="flex items-center gap-3">
+                <CreditCard
+                  size={20}
+                  className="text-[#5A2D2D]"
+                />
+
+                <p className="font-semibold text-[#4B2E2E]">
+                  Payment
+                </p>
+              </div>
+
+              <p className="mt-3 text-sm text-[#7A6464]">
+                {paymentMethod}
+              </p>
+
+              <span
+                className={`mt-3 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(
+                  paymentStatus
+                )}`}
+              >
+                {paymentStatus}
+              </span>
+            </div>
+
+            <div className="rounded-2xl bg-white p-5">
+              <div className="flex items-center gap-3">
+                <User
+                  size={20}
+                  className="text-[#5A2D2D]"
+                />
+
+                <p className="font-semibold text-[#4B2E2E]">
+                  Confirmation Email
+                </p>
+              </div>
+
+              <p className="mt-3 break-all text-sm text-[#7A6464]">
+                {order.email ??
+                  user.email}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-2xl bg-white p-5 sm:p-6">
+            <h2 className="font-serif text-2xl text-[#4B2E2E]">
+              Payment Summary
+            </h2>
+
+            <div className="mt-6 space-y-4">
+              <div className="flex items-center justify-between gap-4 text-[#7A6464]">
+                <span>
+                  Subtotal
+                </span>
+
+                <span>
+                  {formatCurrency(
+                    subtotal
+                  )}
+                </span>
+              </div>
+
+              {order.coupon_code &&
+              discountAmount > 0 ? (
+                <>
+                  <div className="flex items-center justify-between gap-4 text-emerald-700">
+                    <span className="inline-flex items-center gap-2">
+                      <Tag
+                        size={16}
+                      />
+
+                      Coupon{" "}
+                      {order.coupon_code}
+                    </span>
+
+                    <span>
+                      -
+                      {formatCurrency(
+                        discountAmount
+                      )}
+                    </span>
+                  </div>
+                </>
+              ) : null}
+
+              <div className="flex items-center justify-between gap-4 border-t border-[#E8DDD3] pt-5 text-xl font-semibold text-[#4B2E2E] sm:text-2xl">
+                <span>
+                  Total
+                </span>
+
+                <span>
+                  {formatCurrency(
+                    total
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div className="mt-12 rounded-3xl bg-[#F8F4EF] p-7 sm:p-8">
+          <p className="text-xs uppercase tracking-[0.3em] text-[#8B6B5B]">
+            What&apos;s Next?
           </p>
 
-          <h2 className="mt-4 font-serif text-3xl text-[#4B2E2E]">
-            We'll begin preparing
-            your order immediately.
+          <h2 className="mt-4 font-serif text-2xl text-[#4B2E2E] sm:text-3xl">
+            We&apos;ll begin preparing
+            your order.
           </h2>
 
           <p className="mt-5 leading-8 text-[#7A6464]">
             A confirmation email will
-            be sent shortly. You'll
+            be sent shortly. You will
             also receive shipping and
             delivery updates as your
             order progresses.
           </p>
         </div>
 
-        <div className="mt-12 grid gap-6 md:grid-cols-3">
+        <div className="mt-10 grid gap-6 md:grid-cols-3">
           <div className="rounded-3xl bg-[#F8F4EF] p-6">
             <Package className="mx-auto text-[#5A2D2D]" />
 
@@ -80,9 +514,9 @@ export default async function OrderSuccessPage() {
               Order Processing
             </h3>
 
-            <p className="mt-3 text-[#7A6464]">
-              Our artisans are now
-              preparing your jewellery.
+            <p className="mt-3 leading-7 text-[#7A6464]">
+              Your order is being
+              reviewed and prepared.
             </p>
           </div>
 
@@ -93,10 +527,10 @@ export default async function OrderSuccessPage() {
               Luxury Packaging
             </h3>
 
-            <p className="mt-3 text-[#7A6464]">
-              Signature premium gift
-              packaging included with
-              every order.
+            <p className="mt-3 leading-7 text-[#7A6464]">
+              Premium signature
+              packaging is included
+              with every order.
             </p>
           </div>
 
@@ -104,148 +538,110 @@ export default async function OrderSuccessPage() {
             <User className="mx-auto text-[#5A2D2D]" />
 
             <h3 className="mt-4 font-serif text-2xl text-[#4B2E2E]">
-              Account
+              Your Account
             </h3>
 
-            <p className="mt-3 text-[#7A6464]">
-              Track your order anytime
-              from your account.
+            <p className="mt-3 leading-7 text-[#7A6464]">
+              Track your order from
+              your account at any time.
             </p>
           </div>
         </div>
-                <div className="mt-14">
-          <h3 className="font-serif text-3xl text-[#4B2E2E]">
-            Our Promise
+
+        <div className="mt-12 rounded-3xl bg-[#F8F4EF] p-7 text-left sm:p-8">
+          <h3 className="text-center font-serif text-2xl text-[#4B2E2E]">
+            Estimated Timeline
           </h3>
 
-          <p className="mt-6 leading-8 text-[#7A6464]">
-            Every Rooh & Rivet piece is
-            handcrafted by skilled artisans,
-            carefully quality checked, and
-            beautifully packaged before it
-            reaches you. We believe luxury
-            should feel personal from the
-            moment you place your order until
-            the day it arrives.
-          </p>
+          <div className="mx-auto mt-8 max-w-2xl space-y-7">
+            {[
+              {
+                title:
+                  "Order Confirmed",
+                description:
+                  "Your order has been successfully received.",
+              },
+              {
+                title:
+                  "Packaging",
+                description:
+                  "Your jewellery will be carefully quality checked and packaged before dispatch.",
+              },
+              {
+                title:
+                  "Shipped",
+                description:
+                  "You will receive shipping confirmation and tracking details.",
+              },
+              {
+                title:
+                  "Delivered",
+                description:
+                  "Your Rooh & Rivet jewellery will arrive at your delivery address.",
+              },
+            ].map(
+              (step) => (
+                <div
+                  key={
+                    step.title
+                  }
+                  className="flex items-start gap-5"
+                >
+                  <div className="mt-1.5 h-4 w-4 shrink-0 rounded-full bg-[#5A2D2D]" />
+
+                  <div>
+                    <h4 className="font-semibold text-[#4B2E2E]">
+                      {
+                        step.title
+                      }
+                    </h4>
+
+                    <p className="mt-1 leading-7 text-[#7A6464]">
+                      {
+                        step.description
+                      }
+                    </p>
+                  </div>
+                </div>
+              )
+            )}
+          </div>
         </div>
 
-        <div className="mt-14 flex flex-col justify-center gap-5 md:flex-row">
+        <div className="mt-12 flex flex-col justify-center gap-4 md:flex-row">
           <Link
             href="/account/orders"
-            className="flex items-center justify-center gap-3 rounded-full bg-[#5A2D2D] px-10 py-5 text-white transition hover:bg-[#472323]"
+            className="flex items-center justify-center gap-3 rounded-full bg-[#5A2D2D] px-9 py-4 text-white transition hover:bg-[#472323]"
           >
             View My Orders
-            <ArrowRight size={20} />
+
+            <ArrowRight
+              size={20}
+            />
           </Link>
 
           <Link
             href="/shop"
-            className="rounded-full border border-[#5A2D2D] px-10 py-5 text-[#5A2D2D] transition hover:bg-[#5A2D2D] hover:text-white"
+            className="rounded-full border border-[#5A2D2D] px-9 py-4 text-[#5A2D2D] transition hover:bg-[#5A2D2D] hover:text-white"
           >
             Continue Shopping
           </Link>
 
           <Link
             href="/contact"
-            className="rounded-full border border-[#E8DDD3] px-10 py-5 text-[#5A2D2D] transition hover:bg-[#F8F4EF]"
+            className="rounded-full border border-[#E8DDD3] px-9 py-4 text-[#5A2D2D] transition hover:bg-[#F8F4EF]"
           >
             Contact Support
           </Link>
         </div>
 
-        <div className="mt-14 rounded-3xl border border-[#E8DDD3] bg-[#FCFAF8] p-8">
-          <h3 className="font-serif text-2xl text-[#4B2E2E]">
-            Email Updates
-          </h3>
-
-          <p className="mt-4 leading-8 text-[#7A6464]">
-            You will soon receive:
-          </p>
-
-          <ul className="mt-6 space-y-3 text-left text-[#5A2D2D]">
-            <li>✓ Order confirmation email</li>
-            <li>✓ Shipping confirmation</li>
-            <li>✓ Tracking information</li>
-            <li>✓ Delivery confirmation</li>
-          </ul>
-        </div>
-                <div className="mt-14 rounded-3xl bg-[#F8F4EF] p-8">
-          <h3 className="font-serif text-2xl text-[#4B2E2E]">
-            Estimated Timeline
-          </h3>
-
-          <div className="mt-8 space-y-6 text-left">
-            <div className="flex items-start gap-5">
-              <div className="mt-1 h-4 w-4 rounded-full bg-[#5A2D2D]" />
-
-              <div>
-                <h4 className="font-semibold text-[#4B2E2E]">
-                  Order Confirmed
-                </h4>
-
-                <p className="mt-1 text-[#7A6464]">
-                  Your order has been
-                  successfully received.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-5">
-              <div className="mt-1 h-4 w-4 rounded-full bg-[#5A2D2D]" />
-
-              <div>
-                <h4 className="font-semibold text-[#4B2E2E]">
-                  packaging
-                </h4>
-
-                <p className="mt-1 text-[#7A6464]">
-                Your jewellery is carefully packaged with attention to detail before dispatch.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-5">
-              <div className="mt-1 h-4 w-4 rounded-full bg-[#5A2D2D]" />
-
-              <div>
-                <h4 className="font-semibold text-[#4B2E2E]">
-                  Shipped
-                </h4>
-
-                <p className="mt-1 text-[#7A6464]">
-                  You'll receive a shipping
-                  confirmation email together
-                  with tracking details.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-5">
-              <div className="mt-1 h-4 w-4 rounded-full bg-[#5A2D2D]" />
-
-              <div>
-                <h4 className="font-semibold text-[#4B2E2E]">
-                  Delivered
-                </h4>
-
-                <p className="mt-1 text-[#7A6464]">
-                  Enjoy your Rooh & Rivet
-                  jewellery and thank you for
-                  supporting handcrafted luxury.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <p className="mt-12 text-sm leading-7 text-[#8B6B5B]">
-          Need help with your order? Our team is
-          always happy to assist you. Simply
-          contact us through your account or our
-          support page.
+        <p className="mt-10 text-sm leading-7 text-[#8B6B5B]">
+          Need help with your order?
+          Our team is always happy to
+          assist you through the
+          contact page.
         </p>
       </div>
     </main>
-      );
+  );
 }
