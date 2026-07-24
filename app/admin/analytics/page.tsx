@@ -24,18 +24,21 @@ import { supabase } from "@/lib/supabase";
 
 type OrderRow = {
   id: string;
+  customer_name: string | null;
   email: string | null;
   total: number | string | null;
   status: string | null;
   created_at: string | null;
+  items: unknown;
 };
 
-type OrderItemRow = {
+type OrderItem = {
   id: string;
-  order_id: string | null;
-  name: string | null;
-  quantity: number | string | null;
-  price: number | string | null;
+  slug: string;
+  name: string;
+  quantity: number;
+  price: number;
+  image: string;
 };
 
 type MonthlyRevenue = {
@@ -46,6 +49,7 @@ type MonthlyRevenue = {
 };
 
 type BestSeller = {
+  key: string;
   name: string;
   quantity: number;
   revenue: number;
@@ -69,7 +73,7 @@ type StatCard = {
 };
 
 function toNumber(
-  value: number | string | null
+  value: number | string | null | undefined
 ): number {
   const parsed = Number(value);
 
@@ -78,7 +82,9 @@ function toNumber(
     : 0;
 }
 
-function formatCurrency(value: number): string {
+function formatCurrency(
+  value: number
+): string {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
@@ -113,8 +119,11 @@ function getValidDate(
   return date;
 }
 
-function getMonthKey(date: Date): string {
+function getMonthKey(
+  date: Date
+): string {
   const year = date.getFullYear();
+
   const month = String(
     date.getMonth() + 1
   ).padStart(2, "0");
@@ -122,14 +131,18 @@ function getMonthKey(date: Date): string {
   return `${year}-${month}`;
 }
 
-function getLastSixMonths(): MonthlyRevenue[] {
-  const currentDate = new Date();
+function createMonthlyBuckets(): MonthlyRevenue[] {
+  const now = new Date();
   const months: MonthlyRevenue[] = [];
 
-  for (let index = 5; index >= 0; index -= 1) {
+  for (
+    let monthOffset = 5;
+    monthOffset >= 0;
+    monthOffset -= 1
+  ) {
     const date = new Date(
-      currentDate.getFullYear(),
-      currentDate.getMonth() - index,
+      now.getFullYear(),
+      now.getMonth() - monthOffset,
       1
     );
 
@@ -149,7 +162,80 @@ function getLastSixMonths(): MonthlyRevenue[] {
   return months;
 }
 
-function formatStatus(status: string): string {
+function isRecord(
+  value: unknown
+): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
+  );
+}
+
+function parseOrderItems(
+  value: unknown
+): OrderItem[] {
+  let parsedValue: unknown = value;
+
+  if (typeof value === "string") {
+    try {
+      parsedValue =
+        JSON.parse(value) as unknown;
+    } catch {
+      return [];
+    }
+  }
+
+  if (!Array.isArray(parsedValue)) {
+    return [];
+  }
+
+  return parsedValue
+    .filter(isRecord)
+    .map((item) => {
+      return {
+        id:
+          typeof item.id === "string"
+            ? item.id
+            : "",
+        slug:
+          typeof item.slug === "string"
+            ? item.slug
+            : "",
+        name:
+          typeof item.name === "string" &&
+          item.name.trim()
+            ? item.name.trim()
+            : "Unnamed Product",
+        quantity: Math.max(
+          0,
+          toNumber(
+            typeof item.quantity === "number" ||
+              typeof item.quantity === "string"
+              ? item.quantity
+              : 0
+          )
+        ),
+        price: Math.max(
+          0,
+          toNumber(
+            typeof item.price === "number" ||
+              typeof item.price === "string"
+              ? item.price
+              : 0
+          )
+        ),
+        image:
+          typeof item.image === "string"
+            ? item.image
+            : "",
+      };
+    });
+}
+
+function formatStatus(
+  status: string
+): string {
   return status
     .replace(/_/g, " ")
     .trim()
@@ -172,7 +258,7 @@ function getStatusClasses(
 
   if (
     normalized.includes("delivered") ||
-    normalized.includes("complete")
+    normalized.includes("completed")
   ) {
     return "bg-green-100 text-green-700";
   }
@@ -206,16 +292,39 @@ function getErrorMessage(
     return error.message;
   }
 
+  if (isRecord(error)) {
+    const message = error.message;
+
+    if (typeof message === "string") {
+      return message;
+    }
+  }
+
   return "Unable to load analytics.";
 }
 
-export default function AnalyticsPage() {
-  const [orders, setOrders] = useState<
-    OrderRow[]
-  >([]);
+function formatOrderDate(
+  value: string | null
+): string {
+  const date = getValidDate(value);
 
-  const [orderItems, setOrderItems] =
-    useState<OrderItemRow[]>([]);
+  if (!date) {
+    return "Unknown date";
+  }
+
+  return date.toLocaleDateString(
+    "en-IN",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }
+  );
+}
+
+export default function AnalyticsPage() {
+  const [orders, setOrders] =
+    useState<OrderRow[]>([]);
 
   const [loading, setLoading] =
     useState(true);
@@ -237,46 +346,35 @@ export default function AnalyticsPage() {
       setError("");
 
       try {
-        const [
-          ordersResult,
-          orderItemsResult,
-        ] = await Promise.all([
-          supabase
-            .from("orders")
-            .select(
-              "id, email, total, status, created_at"
-            )
-            .order("created_at", {
-              ascending: true,
-            }),
+        const {
+          data,
+          error: ordersError,
+        } = await supabase
+          .from("orders")
+          .select(
+            `
+              id,
+              customer_name,
+              email,
+              total,
+              status,
+              created_at,
+              items
+            `
+          )
+          .order("created_at", {
+            ascending: false,
+          });
 
-          supabase
-            .from("order_items")
-            .select(
-              "id, order_id, name, quantity, price"
-            ),
-        ]);
-
-        if (ordersResult.error) {
-          throw ordersResult.error;
-        }
-
-        if (orderItemsResult.error) {
-          throw orderItemsResult.error;
+        if (ordersError) {
+          throw ordersError;
         }
 
         setOrders(
-          (ordersResult.data ??
-            []) as OrderRow[]
-        );
-
-        setOrderItems(
-          (orderItemsResult.data ??
-            []) as OrderItemRow[]
+          (data ?? []) as OrderRow[]
         );
       } catch (loadError) {
         setOrders([]);
-        setOrderItems([]);
         setError(
           getErrorMessage(loadError)
         );
@@ -304,9 +402,8 @@ export default function AnalyticsPage() {
   }, [orders]);
 
   const customerCount = useMemo(() => {
-    const customerEmails = new Set<
-      string
-    >();
+    const customers =
+      new Set<string>();
 
     orders.forEach((order) => {
       const email = order.email
@@ -314,12 +411,26 @@ export default function AnalyticsPage() {
         .toLowerCase();
 
       if (email) {
-        customerEmails.add(email);
+        customers.add(email);
       }
     });
 
-    return customerEmails.size;
+    return customers.size;
   }, [orders]);
+
+  const allOrderItems = useMemo(() => {
+    return orders.flatMap((order) =>
+      parseOrderItems(order.items)
+    );
+  }, [orders]);
+
+  const totalItemsSold = useMemo(() => {
+    return allOrderItems.reduce(
+      (total, item) =>
+        total + item.quantity,
+      0
+    );
+  }, [allOrderItems]);
 
   const averageOrderValue =
     orders.length > 0
@@ -394,7 +505,7 @@ export default function AnalyticsPage() {
 
   const monthlyRevenue = useMemo(() => {
     const months =
-      getLastSixMonths();
+      createMonthlyBuckets();
 
     const monthsByKey = new Map(
       months.map((month) => [
@@ -446,35 +557,32 @@ export default function AnalyticsPage() {
       BestSeller
     >();
 
-    orderItems.forEach((item) => {
-      const name =
-        item.name?.trim() ||
-        "Unnamed Product";
-
-      const quantity = Math.max(
-        0,
-        toNumber(item.quantity)
-      );
-
-      const price = Math.max(
-        0,
-        toNumber(item.price)
-      );
+    allOrderItems.forEach((item) => {
+      const productKey =
+        item.id ||
+        item.slug ||
+        item.name.toLowerCase();
 
       const existing =
-        products.get(name);
+        products.get(productKey);
 
       if (existing) {
-        existing.quantity += quantity;
+        existing.quantity +=
+          item.quantity;
+
         existing.revenue +=
-          quantity * price;
-      } else {
-        products.set(name, {
-          name,
-          quantity,
-          revenue: quantity * price,
-        });
+          item.quantity * item.price;
+
+        return;
       }
+
+      products.set(productKey, {
+        key: productKey,
+        name: item.name,
+        quantity: item.quantity,
+        revenue:
+          item.quantity * item.price,
+      });
     });
 
     return Array.from(
@@ -497,7 +605,7 @@ export default function AnalyticsPage() {
         );
       })
       .slice(0, 5);
-  }, [orderItems]);
+  }, [allOrderItems]);
 
   const highestProductQuantity =
     useMemo(() => {
@@ -548,6 +656,10 @@ export default function AnalyticsPage() {
         (first, second) =>
           second.count - first.count
       );
+  }, [orders]);
+
+  const recentOrders = useMemo(() => {
+    return orders.slice(0, 5);
   }, [orders]);
 
   const stats = useMemo<StatCard[]>(
@@ -640,7 +752,7 @@ export default function AnalyticsPage() {
 
           <p className="mt-2 text-[#8B6B5B]">
             Live store performance from
-            your Supabase order data.
+            your Supabase orders.
           </p>
         </div>
 
@@ -689,6 +801,7 @@ export default function AnalyticsPage() {
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => {
           const Icon = stat.icon;
+
           const isNegative =
             typeof stat.trend ===
               "number" &&
@@ -850,28 +963,13 @@ export default function AnalyticsPage() {
 
                 <div className="rounded-2xl bg-[#F8F4EF] p-5">
                   <p className="text-sm text-[#8B6B5B]">
-                    Recorded items sold
+                    Total items sold
                   </p>
 
                   <p className="mt-2 font-serif text-2xl text-[#5A2D2D]">
-                    {orderItems
-                      .reduce(
-                        (
-                          total,
-                          item
-                        ) => {
-                          return (
-                            total +
-                            toNumber(
-                              item.quantity
-                            )
-                          );
-                        },
-                        0
-                      )
-                      .toLocaleString(
-                        "en-IN"
-                      )}
+                    {totalItemsSold.toLocaleString(
+                      "en-IN"
+                    )}
                   </p>
                 </div>
               </div>
@@ -947,8 +1045,9 @@ export default function AnalyticsPage() {
             </h2>
 
             <p className="mt-2 text-sm text-[#8B6B5B]">
-              Ranked using quantities in
-              the order items table.
+              Ranked using product
+              quantities stored inside
+              orders.items.
             </p>
           </div>
 
@@ -984,7 +1083,7 @@ export default function AnalyticsPage() {
 
                 return (
                   <div
-                    key={product.name}
+                    key={product.key}
                     className="rounded-2xl border border-[#EFE5DE] p-5"
                   >
                     <div className="flex items-start gap-4">
@@ -1029,6 +1128,115 @@ export default function AnalyticsPage() {
                 );
               }
             )}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-3xl border border-[#E8DDD3] bg-white p-6 shadow-[0_15px_45px_rgba(75,46,46,0.05)] sm:p-8">
+        <div>
+          <h2 className="font-serif text-3xl text-[#5A2D2D]">
+            Recent Orders
+          </h2>
+
+          <p className="mt-2 text-sm text-[#8B6B5B]">
+            The five most recent orders
+            recorded in Supabase.
+          </p>
+        </div>
+
+        {recentOrders.length === 0 ? (
+          <div className="mt-8 rounded-2xl border border-dashed border-[#DCCEC4] bg-[#FCFAF8] px-6 py-14 text-center text-sm text-[#8B6B5B]">
+            No recent orders available.
+          </div>
+        ) : (
+          <div className="mt-8 overflow-x-auto rounded-2xl border border-[#EFE5DE]">
+            <table className="min-w-full">
+              <thead className="bg-[#F8F4EF]">
+                <tr className="text-left text-xs font-semibold uppercase tracking-[0.12em] text-[#8B6B5B]">
+                  <th className="px-5 py-4">
+                    Order
+                  </th>
+
+                  <th className="px-5 py-4">
+                    Customer
+                  </th>
+
+                  <th className="px-5 py-4">
+                    Date
+                  </th>
+
+                  <th className="px-5 py-4">
+                    Status
+                  </th>
+
+                  <th className="px-5 py-4 text-right">
+                    Total
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {recentOrders.map(
+                  (order) => {
+                    const status =
+                      formatStatus(
+                        order.status?.trim() ||
+                          "Pending"
+                      );
+
+                    return (
+                      <tr
+                        key={order.id}
+                        className="border-t border-[#EFE5DE]"
+                      >
+                        <td className="px-5 py-4 font-mono text-xs text-[#5A2D2D]">
+                          #
+                          {order.id
+                            .slice(0, 8)
+                            .toUpperCase()}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <p className="font-medium text-[#5A2D2D]">
+                            {order.customer_name ||
+                              "Customer"}
+                          </p>
+
+                          <p className="mt-1 text-xs text-[#92796D]">
+                            {order.email ||
+                              "No email"}
+                          </p>
+                        </td>
+
+                        <td className="px-5 py-4 text-sm text-[#6F5B52]">
+                          {formatOrderDate(
+                            order.created_at
+                          )}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(
+                              status
+                            )}`}
+                          >
+                            {status}
+                          </span>
+                        </td>
+
+                        <td className="px-5 py-4 text-right font-semibold text-[#5A2D2D]">
+                          {formatCurrency(
+                            toNumber(
+                              order.total
+                            )
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  }
+                )}
+              </tbody>
+            </table>
           </div>
         )}
       </section>
