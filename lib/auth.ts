@@ -1,7 +1,5 @@
 import { supabase } from "@/lib/supabase";
 
-import { ADMIN_EMAILS } from "@/lib/admin";
-
 export async function getCurrentUser() {
   const {
     data: { user },
@@ -42,16 +40,25 @@ export async function signOut() {
   return await supabase.auth.signOut();
 }
 
-export function isAdmin(email?: string | null): boolean {
-  if (!email) {
+export async function isAdmin(
+  userId?: string | null
+): Promise<boolean> {
+  if (!userId) {
     return false;
   }
 
-  return ADMIN_EMAILS.some(
-    (adminEmail) =>
-      adminEmail.toLowerCase() ===
-      email.toLowerCase()
-  );
+  const { data, error } = await supabase
+    .from("admins")
+    .select("role, active")
+    .eq("user_id", userId)
+    .eq("active", true)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return !!data;
 }
 
 export async function requireAdmin() {
@@ -62,14 +69,25 @@ export async function requireAdmin() {
       authenticated: false,
       authorized: false,
       user: null,
+      admin: null,
     };
   }
 
-  const authorized = isAdmin(user.email);
+  const { data: admin, error } = await supabase
+    .from("admins")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("active", true)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
 
   return {
     authenticated: true,
-    authorized,
+    authorized: !!admin,
     user,
+    admin,
   };
 }

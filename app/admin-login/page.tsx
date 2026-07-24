@@ -4,44 +4,23 @@ import {
   type FormEvent,
   useState,
 } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Eye,
   EyeOff,
-  LogIn,
+  LockKeyhole,
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 
-function getSafeRedirect(): string {
-  if (typeof window === "undefined") {
-    return "/account";
-  }
+type AdminRecord = {
+  id: string;
+  role: string;
+  active: boolean;
+};
 
-  const searchParams =
-    new URLSearchParams(
-      window.location.search
-    );
-
-  const redirect =
-    searchParams.get("redirect");
-
-  if (
-    !redirect ||
-    !redirect.startsWith("/") ||
-    redirect.startsWith("//") ||
-    redirect === "/admin" ||
-    redirect.startsWith("/admin/") ||
-    redirect === "/admin-login"
-  ) {
-    return "/account";
-  }
-
-  return redirect;
-}
-
-export default function CustomerLoginPage() {
+export default function AdminLoginPage() {
   const router = useRouter();
 
   const [email, setEmail] =
@@ -65,6 +44,7 @@ export default function CustomerLoginPage() {
 
     try {
       const {
+        data: signInData,
         error: signInError,
       } =
         await supabase.auth.signInWithPassword(
@@ -80,17 +60,42 @@ export default function CustomerLoginPage() {
         throw signInError;
       }
 
-      const redirect =
-        getSafeRedirect();
+      const {
+        data: admin,
+        error: adminError,
+      } = await supabase
+        .from("admins")
+        .select("id, role, active")
+        .eq(
+          "user_id",
+          signInData.user.id
+        )
+        .maybeSingle<AdminRecord>();
 
-      router.replace(redirect);
+      if (adminError) {
+        await supabase.auth.signOut();
+
+        throw new Error(
+          "Unable to verify admin access."
+        );
+      }
+
+      if (!admin || !admin.active) {
+        await supabase.auth.signOut();
+
+        throw new Error(
+          "This account does not have active admin access."
+        );
+      }
+
+      router.replace("/admin");
       router.refresh();
     } catch (loginError) {
       if (loginError instanceof Error) {
         setError(loginError.message);
       } else {
         setError(
-          "Unable to sign in. Please try again."
+          "Unable to sign in to the admin portal."
         );
       }
     } finally {
@@ -104,7 +109,7 @@ export default function CustomerLoginPage() {
         <div className="rounded-[32px] border border-[#E8DDD4] bg-white p-8 shadow-[0_24px_70px_rgba(75,46,46,0.10)] sm:p-10">
           <div className="mb-8 text-center">
             <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full bg-[#5A2D2D] text-white">
-              <LogIn size={23} />
+              <LockKeyhole size={24} />
             </div>
 
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.28em] text-[#9A7765]">
@@ -112,12 +117,12 @@ export default function CustomerLoginPage() {
             </p>
 
             <h1 className="font-serif text-3xl text-[#4B2E2E]">
-              Welcome Back
+              Admin Portal
             </h1>
 
             <p className="mt-3 text-sm leading-6 text-[#7A6464]">
-              Sign in to view your orders,
-              wishlist and account details.
+              Sign in using an authorised
+              administrator account.
             </p>
           </div>
 
@@ -133,14 +138,14 @@ export default function CustomerLoginPage() {
           >
             <div>
               <label
-                htmlFor="customer-email"
+                htmlFor="admin-email"
                 className="mb-2 block text-sm font-medium text-[#4B2E2E]"
               >
-                Email address
+                Admin email
               </label>
 
               <input
-                id="customer-email"
+                id="admin-email"
                 type="email"
                 required
                 autoComplete="email"
@@ -150,31 +155,22 @@ export default function CustomerLoginPage() {
                     event.target.value
                   )
                 }
-                placeholder="you@example.com"
+                placeholder="admin@example.com"
                 className="w-full rounded-2xl border border-[#DED0C5] bg-[#FCFAF8] px-4 py-3.5 text-[#4B2E2E] outline-none transition placeholder:text-[#AE9B90] focus:border-[#5A2D2D] focus:ring-2 focus:ring-[#5A2D2D]/10"
               />
             </div>
 
             <div>
-              <div className="mb-2 flex items-center justify-between">
-                <label
-                  htmlFor="customer-password"
-                  className="text-sm font-medium text-[#4B2E2E]"
-                >
-                  Password
-                </label>
-
-                <Link
-                  href="/auth/forgot-password"
-                  className="text-xs font-medium text-[#8B6B5B] transition hover:text-[#4B2E2E]"
-                >
-                  Forgot password?
-                </Link>
-              </div>
+              <label
+                htmlFor="admin-password"
+                className="mb-2 block text-sm font-medium text-[#4B2E2E]"
+              >
+                Password
+              </label>
 
               <div className="relative">
                 <input
-                  id="customer-password"
+                  id="admin-password"
                   type={
                     showPassword
                       ? "text"
@@ -218,32 +214,20 @@ export default function CustomerLoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-2xl bg-[#5A2D2D] px-5 py-3.5 text-sm font-semibold uppercase tracking-[0.15em] text-white transition hover:bg-[#482323] disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-2xl bg-[#5A2D2D] px-5 py-3.5 text-sm font-semibold uppercase tracking-[0.15em] text-white transition hover:bg-[#4B2525] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading
-                ? "Signing in..."
-                : "Sign in"}
+                ? "Verifying access..."
+                : "Enter admin portal"}
             </button>
           </form>
 
           <div className="mt-7 border-t border-[#EEE5DE] pt-6 text-center">
-            <p className="text-sm text-[#7A6464]">
-              New to Rooh &amp; Rivet?{" "}
-              <Link
-                href="/auth/signup"
-                className="font-semibold text-[#5A2D2D] transition hover:underline"
-              >
-                Create an account
-              </Link>
-            </p>
-          </div>
-
-          <div className="mt-4 text-center">
             <Link
-              href="/admin-login"
-              className="text-xs font-medium uppercase tracking-[0.14em] text-[#9A7765] transition hover:text-[#4B2E2E]"
+              href="/"
+              className="text-sm font-medium text-[#8B6B5B] transition hover:text-[#4B2E2E]"
             >
-              Administrator login
+              Return to storefront
             </Link>
           </div>
         </div>

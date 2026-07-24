@@ -13,6 +13,7 @@ type OrderItem = {
 };
 
 type CheckoutRequest = {
+  user_id: string;
   customer_name: string;
   email: string;
   phone: string;
@@ -33,9 +34,11 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
-    const body: CheckoutRequest = await request.json();
+    const body: CheckoutRequest =
+      await request.json();
 
     if (
+      !body.user_id ||
       !body.customer_name ||
       !body.email ||
       !body.address ||
@@ -49,7 +52,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "Missing required checkout information.",
+          message:
+            "Missing required checkout information.",
         },
         {
           status: 400,
@@ -58,7 +62,10 @@ export async function POST(request: NextRequest) {
     }
 
     for (const item of body.items) {
-      const { data: product, error } = await supabase
+      const {
+        data: product,
+        error,
+      } = await supabase
         .from("products")
         .select("id, stock, active")
         .eq("id", item.id)
@@ -68,7 +75,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            message: `${item.name} no longer exists.`,
+            message:
+              `${item.name} no longer exists.`,
           },
           {
             status: 404,
@@ -80,7 +88,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            message: `${item.name} is currently unavailable.`,
+            message:
+              `${item.name} is currently unavailable.`,
           },
           {
             status: 400,
@@ -88,11 +97,14 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (product.stock < item.quantity) {
+      if (
+        product.stock < item.quantity
+      ) {
         return NextResponse.json(
           {
             success: false,
-            message: `${item.name} only has ${product.stock} remaining.`,
+            message:
+              `${item.name} only has ${product.stock} remaining.`,
           },
           {
             status: 400,
@@ -101,30 +113,66 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { data: order, error: orderError } = await supabase
+    const {
+      data: order,
+      error: orderError,
+    } = await supabase
       .from("orders")
       .insert({
-        customer_name: body.customer_name,
-        email: body.email,
-        phone: body.phone,
-        address: body.address,
-        city: body.city,
-        state: body.state,
-        postal_code: body.postal_code,
-        country: body.country,
-        payment_method: body.payment_method,
-        total: body.total,
-        status: "Pending",
-        items: body.items,
+        user_id: body.user_id,
+
+        customer_name:
+          body.customer_name,
+
+        email:
+          body.email,
+
+        phone:
+          body.phone,
+
+        address:
+          body.address,
+
+        city:
+          body.city,
+
+        state:
+          body.state,
+
+        postal_code:
+          body.postal_code,
+
+        country:
+          body.country,
+
+        payment_method:
+          body.payment_method,
+
+        total:
+          body.total,
+
+        status:
+          "Pending",
+
+        payment_status:
+          "Pending",
+
+        items:
+          body.items,
       })
       .select()
       .single();
 
-    if (orderError || !order) {
+    if (
+      orderError ||
+      !order
+    ) {
       return NextResponse.json(
         {
           success: false,
-          message: orderError?.message ?? "Failed to create order.",
+          message:
+            orderError?.message ??
+            "Failed to create order.",
         },
         {
           status: 500,
@@ -133,7 +181,9 @@ export async function POST(request: NextRequest) {
     }
 
     for (const item of body.items) {
-      const { data: product } = await supabase
+      const {
+        data: product,
+      } = await supabase
         .from("products")
         .select("stock")
         .eq("id", item.id)
@@ -141,43 +191,57 @@ export async function POST(request: NextRequest) {
 
       if (!product) continue;
 
-      const currentStock = Number(product.stock) || 0;
+      const currentStock =
+        Number(product.stock) || 0;
 
-      const newStock = Math.max(
-        0,
-        currentStock - item.quantity
-      );
-
-      const updates: {
-        stock: number;
-        active?: boolean;
-      } = {
-        stock: newStock,
-      };
-
-      if (newStock === 0) {
-        updates.active = false;
-      }
+      const newStock =
+        Math.max(
+          0,
+          currentStock - item.quantity
+        );
 
       await supabase
         .from("products")
-        .update(updates)
-        .eq("id", item.id);
+        .update({
+          stock: newStock,
+          ...(newStock === 0
+            ? { active: false }
+            : {}),
+        })
+        .eq(
+          "id",
+          item.id
+        );
     }
 
     try {
       await resend.emails.send({
-        from: EMAIL_FROM,
-        to: body.email,
-        subject: `Your Rooh & Rivet Order #${order.id} is Confirmed`,
-        react: OrderConfirmation({
-          customerName: body.customer_name,
-          orderId: String(order.id),
-          total: body.total,
-        }),
+        from:
+          EMAIL_FROM,
+
+        to:
+          body.email,
+
+        subject:
+          `Your Rooh & Rivet Order #${order.id} is Confirmed`,
+
+        react:
+          OrderConfirmation({
+            customerName:
+              body.customer_name,
+
+            orderId:
+              String(order.id),
+
+            total:
+              body.total,
+          }),
       });
     } catch (emailError) {
-      console.error("Email Error:", emailError);
+      console.error(
+        "Email Error:",
+        emailError
+      );
     }
 
     return NextResponse.json(
@@ -189,13 +253,18 @@ export async function POST(request: NextRequest) {
         status: 201,
       }
     );
+
   } catch (error) {
-    console.error("Checkout Error:", error);
+    console.error(
+      "Checkout Error:",
+      error
+    );
 
     return NextResponse.json(
       {
         success: false,
-        message: "An unexpected server error occurred.",
+        message:
+          "An unexpected server error occurred.",
       },
       {
         status: 500,

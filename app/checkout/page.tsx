@@ -6,6 +6,7 @@ import {
   useMemo,
   useState,
 } from "react";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -32,9 +33,11 @@ type CheckoutItem = {
   name: string;
   quantity: number;
   price: number;
+  image: string;
 };
 
 type CheckoutRequest = {
+  user_id: string;
   customer_name: string;
   email: string;
   phone: string;
@@ -65,13 +68,18 @@ export default function CheckoutPage() {
 
   const {
     cart,
-    subtotal,
     clearCart,
   } = useCart();
 
   const {
     formatPrice,
   } = useCurrency();
+
+  const [userId, setUserId] =
+    useState("");
+
+  const [checkingAuth, setCheckingAuth] =
+    useState(true);
 
   const [loading, setLoading] =
     useState(false);
@@ -83,41 +91,72 @@ export default function CheckoutPage() {
 
   const shipping = 0;
 
+  const subtotal = useMemo(
+    () =>
+      cart.reduce(
+        (total, item) =>
+          total +
+          Number(item.price || 0) *
+            Number(item.quantity || 0),
+        0
+      ),
+    [cart]
+  );
+
   const total = useMemo(
     () => subtotal + shipping,
     [subtotal]
   );
 
   useEffect(() => {
-    void loadCustomer();
+    void checkLogin();
   }, []);
 
-  async function loadCustomer() {
+  async function checkLogin() {
     const {
-      data: { user },
+      data: {
+        user,
+      },
     } = await supabase.auth.getUser();
 
-    if (!user) return;
+    if (!user) {
+      router.replace(
+        "/login?redirect=/checkout"
+      );
+      return;
+    }
+
+    setUserId(user.id);
 
     setForm((previous) => ({
       ...previous,
+
       fullName:
         user.user_metadata?.full_name ?? "",
+
       email:
         user.email ?? "",
+
       phone:
         user.user_metadata?.phone ?? "",
+
       address:
         user.user_metadata?.address ?? "",
+
       city:
         user.user_metadata?.city ?? "",
+
       state:
         user.user_metadata?.state ?? "",
+
       postalCode:
         user.user_metadata?.postal_code ?? "",
+
       country:
         user.user_metadata?.country ?? "",
     }));
+
+    setCheckingAuth(false);
   }
 
   function updateField(
@@ -129,11 +168,17 @@ export default function CheckoutPage() {
       [field]: value,
     }));
   }
-
   async function handleCheckout(
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
+
+    if (!userId) {
+      router.replace(
+        "/login?redirect=/checkout"
+      );
+      return;
+    }
 
     if (cart.length === 0) {
       alert("Your cart is empty.");
@@ -143,55 +188,99 @@ export default function CheckoutPage() {
     setLoading(true);
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      await supabase.auth.updateUser({
+        data: {
+          full_name:
+            form.fullName,
 
-      if (user) {
-        await supabase.auth.updateUser({
-          data: {
-            full_name: form.fullName,
-            phone: form.phone,
-            address: form.address,
-            city: form.city,
-            state: form.state,
-            postal_code: form.postalCode,
-            country: form.country,
-          },
-        });
-      }
+          phone:
+            form.phone,
+
+          address:
+            form.address,
+
+          city:
+            form.city,
+
+          state:
+            form.state,
+
+          postal_code:
+            form.postalCode,
+
+          country:
+            form.country,
+        },
+      });
+
       const payload: CheckoutRequest = {
-        customer_name: form.fullName,
-        email: form.email,
-        phone: form.phone,
-        address: form.address,
-        city: form.city,
-        state: form.state,
-        postal_code: form.postalCode,
-        country: form.country,
-        payment_method: form.paymentMethod,
+        user_id: userId,
+
+        customer_name:
+          form.fullName,
+
+        email:
+          form.email,
+
+        phone:
+          form.phone,
+
+        address:
+          form.address,
+
+        city:
+          form.city,
+
+        state:
+          form.state,
+
+        postal_code:
+          form.postalCode,
+
+        country:
+          form.country,
+
+        payment_method:
+          form.paymentMethod,
+
         total,
+
         items: cart.map((item) => ({
-          id: item.id,
-          slug: item.slug,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          image: item.image,
+          id:
+            item.id,
+
+          slug:
+            item.slug,
+
+          name:
+            item.name,
+
+          quantity:
+            Number(item.quantity),
+
+          price:
+            Number(item.price),
+
+          image:
+            item.image ?? "",
         })),
       };
 
-      const response = await fetch(
-        "/api/checkout",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify(payload),
-        }
-      );
+      const response =
+        await fetch(
+          "/api/checkout",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify(payload),
+          }
+        );
 
       const result =
         await response.json();
@@ -202,7 +291,7 @@ export default function CheckoutPage() {
       ) {
         throw new Error(
           result.message ??
-            "Failed to place your order."
+            "Failed to place order."
         );
       }
 
@@ -211,46 +300,72 @@ export default function CheckoutPage() {
       router.push(
         `/order-success?id=${result.order.id}`
       );
+
     } catch (error) {
-      console.error(error);
+      console.error(
+        "Checkout error:",
+        error
+      );
 
       if (error instanceof Error) {
         alert(error.message);
       } else {
         alert(
-          "Something went wrong while placing your order."
+          "Something went wrong."
         );
       }
+
     } finally {
       setLoading(false);
     }
   }
 
+
+  if (checkingAuth) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#F8F4EF]">
+        <p className="text-[#5A2D2D]">
+          Checking account...
+        </p>
+      </main>
+    );
+  }
+
+
   return (
     <main className="min-h-screen bg-[#F8F4EF] py-12">
+
       <div className="mx-auto max-w-7xl px-6">
+
         <Link
           href="/cart"
-          className="mb-8 inline-flex items-center gap-2 text-[#5A2D2D] transition hover:underline"
+          className="mb-8 inline-flex items-center gap-2 text-[#5A2D2D] hover:underline"
         >
           <ArrowLeft size={18} />
+
           Back to Cart
         </Link>
+
 
         <h1 className="mb-10 font-serif text-5xl text-[#4B2E2E]">
           Checkout
         </h1>
 
+
         <form
           onSubmit={handleCheckout}
           className="grid gap-10 lg:grid-cols-[2fr_1fr]"
         >
+
           <section className="rounded-3xl bg-white p-8 shadow-sm">
+
             <h2 className="mb-8 font-serif text-3xl text-[#4B2E2E]">
               Shipping Information
             </h2>
 
+
             <div className="grid gap-6 md:grid-cols-2">
+
               <input
                 required
                 placeholder="Full Name"
@@ -261,8 +376,9 @@ export default function CheckoutPage() {
                     e.target.value
                   )
                 }
-                className="rounded-xl border p-4 text-[#4B2E2E] outline-none transition focus:border-[#5A2D2D]"
+                className="rounded-xl border p-4 text-[#4B2E2E]"
               />
+
 
               <input
                 required
@@ -275,12 +391,12 @@ export default function CheckoutPage() {
                     e.target.value
                   )
                 }
-                className="rounded-xl border p-4 text-[#4B2E2E] outline-none transition focus:border-[#5A2D2D]"
+                className="rounded-xl border p-4 text-[#4B2E2E]"
               />
+
 
               <input
                 required
-                type="tel"
                 placeholder="Phone Number"
                 value={form.phone}
                 onChange={(e) =>
@@ -289,8 +405,9 @@ export default function CheckoutPage() {
                     e.target.value
                   )
                 }
-                className="rounded-xl border p-4 text-[#4B2E2E] outline-none transition focus:border-[#5A2D2D] md:col-span-2"
+                className="rounded-xl border p-4 text-[#4B2E2E] md:col-span-2"
               />
+
 
               <input
                 required
@@ -302,10 +419,9 @@ export default function CheckoutPage() {
                     e.target.value
                   )
                 }
-                className="rounded-xl border p-4 text-[#4B2E2E] outline-none transition focus:border-[#5A2D2D] md:col-span-2"
+                className="rounded-xl border p-4 text-[#4B2E2E] md:col-span-2"
               />
-
-              <input
+                            <input
                 required
                 placeholder="City"
                 value={form.city}
@@ -315,8 +431,9 @@ export default function CheckoutPage() {
                     e.target.value
                   )
                 }
-                className="rounded-xl border p-4 text-[#4B2E2E] outline-none transition focus:border-[#5A2D2D]"
+                className="rounded-xl border p-4 text-[#4B2E2E]"
               />
+
 
               <input
                 required
@@ -328,8 +445,9 @@ export default function CheckoutPage() {
                     e.target.value
                   )
                 }
-                className="rounded-xl border p-4 text-[#4B2E2E] outline-none transition focus:border-[#5A2D2D]"
+                className="rounded-xl border p-4 text-[#4B2E2E]"
               />
+
 
               <input
                 required
@@ -341,8 +459,9 @@ export default function CheckoutPage() {
                     e.target.value
                   )
                 }
-                className="rounded-xl border p-4 text-[#4B2E2E] outline-none transition focus:border-[#5A2D2D]"
+                className="rounded-xl border p-4 text-[#4B2E2E]"
               />
+
 
               <input
                 required
@@ -354,16 +473,23 @@ export default function CheckoutPage() {
                     e.target.value
                   )
                 }
-                className="rounded-xl border p-4 text-[#4B2E2E] outline-none transition focus:border-[#5A2D2D]"
+                className="rounded-xl border p-4 text-[#4B2E2E]"
               />
+
             </div>
+
+
             <div className="mt-10">
+
               <h3 className="mb-5 font-serif text-2xl text-[#4B2E2E]">
                 Payment Method
               </h3>
 
+
               <div className="space-y-4">
-                <label className="flex cursor-pointer items-center gap-4 rounded-xl border p-5 transition hover:border-[#5A2D2D]">
+
+                <label className="flex cursor-pointer items-center gap-4 rounded-xl border p-5 hover:border-[#5A2D2D]">
+
                   <input
                     type="radio"
                     name="payment"
@@ -380,18 +506,26 @@ export default function CheckoutPage() {
                     }
                   />
 
+
                   <div>
+
                     <p className="font-semibold text-[#4B2E2E]">
                       Credit / Debit Card
                     </p>
 
+
                     <p className="text-sm text-[#8B6B5B]">
                       Secure online payment.
                     </p>
+
                   </div>
+
                 </label>
 
-                <label className="flex cursor-pointer items-center gap-4 rounded-xl border p-5 transition hover:border-[#5A2D2D]">
+
+
+                <label className="flex cursor-pointer items-center gap-4 rounded-xl border p-5 hover:border-[#5A2D2D]">
+
                   <input
                     type="radio"
                     name="payment"
@@ -408,87 +542,128 @@ export default function CheckoutPage() {
                     }
                   />
 
+
                   <div>
+
                     <p className="font-semibold text-[#4B2E2E]">
                       Bank Transfer
                     </p>
 
+
                     <p className="text-sm text-[#8B6B5B]">
-                      Bank instructions will be emailed
-                      after ordering.
+                      Bank instructions will be emailed after ordering.
                     </p>
+
                   </div>
+
                 </label>
+
               </div>
+
             </div>
+
+
           </section>
 
-          <aside className="rounded-3xl bg-white p-8 shadow-sm">
+
+
+          <aside className="h-fit rounded-3xl bg-white p-8 shadow-sm">
+
             <h2 className="mb-6 font-serif text-3xl text-[#4B2E2E]">
               Order Summary
             </h2>
 
+
             <div className="space-y-5">
+
               {cart.map((item) => (
+
                 <div
                   key={item.id}
-                  className="flex items-center justify-between text-[#4B2E2E]"
+                  className="flex justify-between text-[#4B2E2E]"
                 >
+
                   <span>
                     {item.name} × {item.quantity}
                   </span>
 
+
                   <span>
                     {formatPrice(
-                      item.price *
-                        item.quantity
+                      Number(item.price) *
+                      Number(item.quantity)
                     )}
                   </span>
+
+
                 </div>
+
               ))}
 
+
               <div className="border-t pt-5">
-                <div className="mb-3 flex items-center justify-between text-[#8B6B5B]">
+
+
+                <div className="mb-3 flex justify-between text-[#8B6B5B]">
+
                   <span>
                     Subtotal
                   </span>
 
+
                   <span>
                     {formatPrice(subtotal)}
                   </span>
+
                 </div>
 
-                <div className="mb-3 flex items-center justify-between text-[#8B6B5B]">
+
+
+                <div className="mb-3 flex justify-between text-[#8B6B5B]">
+
                   <span>
                     Shipping
                   </span>
 
-                  <span className="font-medium text-emerald-600">
+
+                  <span className="text-emerald-600">
                     Free
                   </span>
+
                 </div>
 
-                <div className="mb-3 flex items-center justify-between text-[#8B6B5B]">
+
+
+                <div className="mb-3 flex justify-between text-[#8B6B5B]">
+
                   <span>
                     Payment
                   </span>
 
+
                   <span>
                     {form.paymentMethod}
                   </span>
+
                 </div>
 
-                <div className="flex items-center justify-between border-t pt-4 text-2xl font-bold text-[#4B2E2E]">
+
+
+                <div className="flex justify-between border-t pt-4 text-2xl font-bold text-[#4B2E2E]">
+
                   <span>
                     Total
                   </span>
 
+
                   <span>
                     {formatPrice(total)}
                   </span>
-                </div>
-              </div>
 
+                </div>
+
+
+              </div>
               <button
                 type="submit"
                 disabled={
@@ -502,14 +677,25 @@ export default function CheckoutPage() {
                   : "Place Order"}
               </button>
 
+
               <p className="mt-4 text-center text-sm text-[#8B6B5B]">
                 By placing your order you agree to our Terms &
                 Conditions and Privacy Policy.
               </p>
+
+
             </div>
+
+
           </aside>
+
+
         </form>
+
+
       </div>
+
+
     </main>
   );
 }

@@ -11,4 +11,4 @@ if (!apiKey) {
 export const resend = new Resend(apiKey);
 
 export const EMAIL_FROM =
-  process.env.EMAIL_FROM ?? "Rooh & Rivet <onboarding@resend.dev>";
+  process.env.EMAIL_FROM ?? "Rooh & Rivet <orders@roohandrivet.com>";
