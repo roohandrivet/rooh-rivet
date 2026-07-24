@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import {
+  Geist,
+  Geist_Mono,
+} from "next/font/google";
 
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -7,25 +10,21 @@ import Providers from "@/components/Providers";
 
 import "./globals.css";
 
-
 const geist = Geist({
   variable: "--font-geist",
   subsets: ["latin"],
 });
-
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
 
+const siteUrl =
+  "https://roohandrivet.com";
 
 export const metadata: Metadata = {
-
-  metadataBase: new URL(
-    "https://roohandrivet.com"
-  ),
-
+  metadataBase: new URL(siteUrl),
 
   title: {
     default:
@@ -35,10 +34,8 @@ export const metadata: Metadata = {
       "%s | Rooh & Rivet",
   },
 
-
   description:
     "Discover timeless handcrafted jewellery by Rooh & Rivet. Premium designs inspired by heritage, elegance and modern luxury.",
-
 
   keywords: [
     "luxury jewellery",
@@ -51,32 +48,54 @@ export const metadata: Metadata = {
     "Rooh & Rivet",
   ],
 
-
   authors: [
     {
-      name:
-        "Rooh & Rivet",
+      name: "Rooh & Rivet",
+      url: siteUrl,
     },
   ],
 
+  creator: "Rooh & Rivet",
 
-  creator:
-    "Rooh & Rivet",
+  publisher: "Rooh & Rivet",
 
+  alternates: {
+    canonical: siteUrl,
+  },
+
+  icons: {
+    icon: [
+      {
+        url: "/logo-icon.png",
+        type: "image/png",
+        sizes: "512x512",
+      },
+    ],
+
+    shortcut: [
+      {
+        url: "/logo-icon.png",
+        type: "image/png",
+      },
+    ],
+
+    apple: [
+      {
+        url: "/logo-icon.png",
+        type: "image/png",
+        sizes: "512x512",
+      },
+    ],
+  },
 
   openGraph: {
+    type: "website",
 
-    type:
-      "website",
+    locale: "en_IN",
 
-    locale:
-      "en_IN",
+    url: siteUrl,
 
-    url:
-      "https://roohandrivet.com",
-
-    siteName:
-      "Rooh & Rivet",
+    siteName: "Rooh & Rivet",
 
     title:
       "Rooh & Rivet | Luxury Handcrafted Jewellery",
@@ -86,26 +105,17 @@ export const metadata: Metadata = {
 
     images: [
       {
-        url:
-          "/og-image.jpg",
-
-        width:
-          1200,
-
-        height:
-          630,
-
+        url: "/og-image.jpg",
+        width: 1200,
+        height: 630,
         alt:
           "Rooh & Rivet Luxury Jewellery",
       },
     ],
   },
 
-
   twitter: {
-
-    card:
-      "summary_large_image",
+    card: "summary_large_image",
 
     title:
       "Rooh & Rivet | Luxury Handcrafted Jewellery",
@@ -118,55 +128,71 @@ export const metadata: Metadata = {
     ],
   },
 
-
   robots: {
-
-    index:
-      true,
-
-    follow:
-      true,
+    index: true,
+    follow: true,
 
     googleBot: {
-
-      index:
-        true,
-
-      follow:
-        true,
-
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
     },
   },
 };
 
+const organizationSchema = {
+  "@context":
+    "https://schema.org",
+
+  "@type":
+    "Organization",
+
+  name:
+    "Rooh & Rivet",
+
+  url:
+    siteUrl,
+
+  logo:
+    `${siteUrl}/logo-icon.png`,
+
+  image:
+    `${siteUrl}/logo-icon.png`,
+
+  description:
+    "Luxury handcrafted jewellery inspired by heritage, elegance and modern design.",
+};
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
-
+}>) {
   return (
-
-    <html lang="en">
-
+    <html lang="en-IN">
       <body
         className={`${geist.variable} ${geistMono.variable} bg-[#F8F4EF]`}
       >
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html:
+              JSON.stringify(
+                organizationSchema
+              ),
+          }}
+        />
 
         <Providers>
-
           <Navbar />
 
           {children}
 
           <Footer />
-
         </Providers>
-
       </body>
-
     </html>
-
   );
 }
