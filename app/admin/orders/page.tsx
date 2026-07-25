@@ -19,9 +19,7 @@ import {
   Truck,
 } from "lucide-react";
 
-import {
-  supabase,
-} from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 type NumericValue =
   | number
@@ -43,49 +41,24 @@ type PaymentStatus =
 
 type Order = {
   id: string;
-  customer_name:
-    | string
-    | null;
-  email:
-    | string
-    | null;
-  phone:
-    | string
-    | null;
-  address:
-    | string
-    | null;
-  city:
-    | string
-    | null;
-  state:
-    | string
-    | null;
-  postal_code:
-    | string
-    | null;
-  country:
-    | string
-    | null;
-  payment_method:
-    | string
-    | null;
-  payment_status:
-    | string
-    | null;
+  customer_name: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  country: string | null;
+  payment_method: string | null;
+  payment_status: string | null;
   subtotal: NumericValue;
-  coupon_code:
-    | string
-    | null;
+  shipping: NumericValue;
+  coupon_code: string | null;
   discount_amount: NumericValue;
   total: NumericValue;
-  status:
-    | string
-    | null;
+  status: string | null;
   items: unknown;
-  created_at:
-    | string
-    | null;
+  created_at: string | null;
 };
 
 const ORDER_STATUSES:
@@ -106,7 +79,9 @@ const PAYMENT_STATUSES:
   ];
 
 function toNumber(
-  value: NumericValue
+  value:
+    | NumericValue
+    | undefined
 ): number {
   const parsed =
     Number(value);
@@ -119,7 +94,9 @@ function toNumber(
 }
 
 function formatCurrency(
-  value: NumericValue
+  value:
+    | NumericValue
+    | undefined
 ): string {
   return new Intl.NumberFormat(
     "en-IN",
@@ -135,9 +112,7 @@ function formatCurrency(
 }
 
 function formatDate(
-  value:
-    | string
-    | null
+  value: string | null
 ): string {
   if (!value) {
     return "Unknown date";
@@ -165,9 +140,7 @@ function formatDate(
 }
 
 function formatTime(
-  value:
-    | string
-    | null
+  value: string | null
 ): string {
   if (!value) {
     return "";
@@ -200,7 +173,7 @@ function getItemCount(
     return 0;
   }
 
-  return items.reduce(
+  return items.reduce<number>(
     (
       total,
       item
@@ -213,23 +186,35 @@ function getItemCount(
         return total;
       }
 
+      if (
+        !(
+          "quantity" in item
+        )
+      ) {
+        return total;
+      }
+
       const quantity =
-        "quantity" in item
-          ? Number(
-              item.quantity
-            )
-          : 0;
+        Number(
+          item.quantity
+        );
+
+      if (
+        !Number.isFinite(
+          quantity
+        )
+      ) {
+        return total;
+      }
 
       return (
         total +
-        (Number.isFinite(
-          quantity
+        Math.max(
+          0,
+          Math.floor(
+            quantity
+          )
         )
-          ? Math.max(
-              0,
-              quantity
-            )
-          : 0)
       );
     },
     0
@@ -237,12 +222,12 @@ function getItemCount(
 }
 
 function getOrderStatusClasses(
-  status:
-    | string
-    | null
+  status: string | null
 ): string {
   switch (
-    status?.toLowerCase()
+    status
+      ?.trim()
+      .toLowerCase()
   ) {
     case "delivered":
       return "border-emerald-200 bg-emerald-50 text-emerald-700";
@@ -262,12 +247,12 @@ function getOrderStatusClasses(
 }
 
 function getPaymentStatusClasses(
-  status:
-    | string
-    | null
+  status: string | null
 ): string {
   switch (
-    status?.toLowerCase()
+    status
+      ?.trim()
+      .toLowerCase()
   ) {
     case "paid":
       return "border-emerald-200 bg-emerald-50 text-emerald-700";
@@ -281,6 +266,24 @@ function getPaymentStatusClasses(
     default:
       return "border-amber-200 bg-amber-50 text-amber-700";
   }
+}
+
+function isOrderStatus(
+  value: string
+): value is OrderStatus {
+  return ORDER_STATUSES.some(
+    (status) =>
+      status === value
+  );
+}
+
+function isPaymentStatus(
+  value: string
+): value is PaymentStatus {
+  return PAYMENT_STATUSES.some(
+    (status) =>
+      status === value
+  );
 }
 
 export default function AdminOrdersPage() {
@@ -345,68 +348,79 @@ export default function AdminOrdersPage() {
         if (
           showRefreshState
         ) {
-          setRefreshing(
-            true
-          );
+          setRefreshing(true);
         } else {
           setLoading(true);
         }
 
         setError("");
 
-        const {
-          data,
-          error:
-            fetchError,
-        } = await supabase
-          .from("orders")
-          .select(
-            `
-              id,
-              customer_name,
-              email,
-              phone,
-              address,
-              city,
-              state,
-              postal_code,
-              country,
-              payment_method,
-              payment_status,
-              subtotal,
-              coupon_code,
-              discount_amount,
-              total,
-              status,
-              items,
-              created_at
-            `
-          )
-          .order(
-            "created_at",
-            {
-              ascending:
-                false,
-            }
-          );
+        try {
+          const {
+            data,
+            error:
+              fetchError,
+          } = await supabase
+            .from("orders")
+            .select(
+              `
+                id,
+                customer_name,
+                email,
+                phone,
+                address,
+                city,
+                state,
+                postal_code,
+                country,
+                payment_method,
+                payment_status,
+                subtotal,
+                shipping,
+                coupon_code,
+                discount_amount,
+                total,
+                status,
+                items,
+                created_at
+              `
+            )
+            .order(
+              "created_at",
+              {
+                ascending:
+                  false,
+              }
+            );
 
-        if (
-          fetchError
-        ) {
-          setError(
-            fetchError.message
-          );
+          if (fetchError) {
+            throw fetchError;
+          }
 
-          setOrders([]);
-        } else {
           setOrders(
             (data ??
               []) as Order[]
           );
-        }
+        } catch (
+          fetchError
+        ) {
+          console.error(
+            "Failed to fetch orders:",
+            fetchError
+          );
 
-        setLoading(false);
-        setRefreshing(false);
+          setOrders([]);
+
+          setError(
+            fetchError instanceof
+              Error
+              ? fetchError.message
+              : "Unable to load orders."
+          );
+        } finally {
+          setLoading(false);
+          setRefreshing(false);
+        }
       },
       []
     );
@@ -438,8 +452,10 @@ export default function AdminOrdersPage() {
               order.payment_status,
               order.payment_method,
               order.coupon_code,
+              order.address,
               order.city,
               order.state,
+              order.postal_code,
               order.country,
             ]
               .filter(
@@ -471,8 +487,27 @@ export default function AdminOrdersPage() {
             order
           ) =>
             total +
-            toNumber(
-              order.total
+            Math.max(
+              0,
+              toNumber(
+                order.total
+              )
+            ),
+          0
+        );
+
+      const totalShipping =
+        orders.reduce(
+          (
+            total,
+            order
+          ) =>
+            total +
+            Math.max(
+              0,
+              toNumber(
+                order.shipping
+              )
             ),
           0
         );
@@ -484,8 +519,11 @@ export default function AdminOrdersPage() {
             order
           ) =>
             total +
-            toNumber(
-              order.discount_amount
+            Math.max(
+              0,
+              toNumber(
+                order.discount_amount
+              )
             ),
           0
         );
@@ -494,7 +532,8 @@ export default function AdminOrdersPage() {
         orders.filter(
           (order) =>
             order.status
-              ?.toLowerCase() ===
+              ?.trim()
+              .toLowerCase() ===
             "pending"
         ).length;
 
@@ -502,12 +541,14 @@ export default function AdminOrdersPage() {
         orders.filter(
           (order) =>
             order.status
-              ?.toLowerCase() ===
+              ?.trim()
+              .toLowerCase() ===
             "delivered"
         ).length;
 
       return {
         totalRevenue,
+        totalShipping,
         totalDiscount,
         pendingOrders,
         deliveredOrders,
@@ -518,57 +559,60 @@ export default function AdminOrdersPage() {
     id: string,
     status: OrderStatus
   ) {
-    setUpdatingOrderId(
-      id
-    );
-
+    setUpdatingOrderId(id);
     setError("");
     setSuccess("");
 
-    const {
-      error:
-        updateError,
-    } = await supabase
-      .from("orders")
-      .update({
-        status,
-      })
-      .eq("id", id);
+    try {
+      const {
+        error:
+          updateError,
+      } = await supabase
+        .from("orders")
+        .update({
+          status,
+        })
+        .eq("id", id);
 
-    if (
-      updateError
-    ) {
-      setError(
-        updateError.message
+      if (updateError) {
+        throw updateError;
+      }
+
+      setOrders(
+        (previous) =>
+          previous.map(
+            (order) =>
+              order.id === id
+                ? {
+                    ...order,
+                    status,
+                  }
+                : order
+          )
       );
 
+      setSuccess(
+        "Order status updated."
+      );
+    } catch (
+      updateError
+    ) {
+      console.error(
+        "Failed to update order status:",
+        updateError
+      );
+
+      setError(
+        updateError instanceof
+          Error
+          ? updateError.message
+          : "Unable to update the order status."
+      );
+    } finally {
       setUpdatingOrderId(
         null
       );
-
-      return;
     }
-
-    setOrders(
-      (previous) =>
-        previous.map(
-          (order) =>
-            order.id === id
-              ? {
-                  ...order,
-                  status,
-                }
-              : order
-        )
-    );
-
-    setSuccess(
-      "Order status updated."
-    );
-
-    setUpdatingOrderId(
-      null
-    );
   }
 
   async function updatePaymentStatus(
@@ -576,59 +620,62 @@ export default function AdminOrdersPage() {
     paymentStatus:
       PaymentStatus
   ) {
-    setUpdatingOrderId(
-      id
-    );
-
+    setUpdatingOrderId(id);
     setError("");
     setSuccess("");
 
-    const {
-      error:
-        updateError,
-    } = await supabase
-      .from("orders")
-      .update({
-        payment_status:
-          paymentStatus,
-      })
-      .eq("id", id);
+    try {
+      const {
+        error:
+          updateError,
+      } = await supabase
+        .from("orders")
+        .update({
+          payment_status:
+            paymentStatus,
+        })
+        .eq("id", id);
 
-    if (
-      updateError
-    ) {
-      setError(
-        updateError.message
+      if (updateError) {
+        throw updateError;
+      }
+
+      setOrders(
+        (previous) =>
+          previous.map(
+            (order) =>
+              order.id === id
+                ? {
+                    ...order,
+                    payment_status:
+                      paymentStatus,
+                  }
+                : order
+          )
       );
 
+      setSuccess(
+        "Payment status updated."
+      );
+    } catch (
+      updateError
+    ) {
+      console.error(
+        "Failed to update payment status:",
+        updateError
+      );
+
+      setError(
+        updateError instanceof
+          Error
+          ? updateError.message
+          : "Unable to update the payment status."
+      );
+    } finally {
       setUpdatingOrderId(
         null
       );
-
-      return;
     }
-
-    setOrders(
-      (previous) =>
-        previous.map(
-          (order) =>
-            order.id === id
-              ? {
-                  ...order,
-                  payment_status:
-                    paymentStatus,
-                }
-              : order
-        )
-    );
-
-    setSuccess(
-      "Payment status updated."
-    );
-
-    setUpdatingOrderId(
-      null
-    );
   }
 
   async function deleteOrder(
@@ -643,50 +690,53 @@ export default function AdminOrdersPage() {
       return;
     }
 
-    setDeletingOrderId(
-      id
-    );
-
+    setDeletingOrderId(id);
     setError("");
     setSuccess("");
 
-    const {
-      error:
-        deleteError,
-    } = await supabase
-      .from("orders")
-      .delete()
-      .eq("id", id);
+    try {
+      const {
+        error:
+          deleteError,
+      } = await supabase
+        .from("orders")
+        .delete()
+        .eq("id", id);
 
-    if (
-      deleteError
-    ) {
-      setError(
-        deleteError.message
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      setOrders(
+        (previous) =>
+          previous.filter(
+            (order) =>
+              order.id !== id
+          )
       );
 
+      setSuccess(
+        "Order deleted."
+      );
+    } catch (
+      deleteError
+    ) {
+      console.error(
+        "Failed to delete order:",
+        deleteError
+      );
+
+      setError(
+        deleteError instanceof
+          Error
+          ? deleteError.message
+          : "Unable to delete the order."
+      );
+    } finally {
       setDeletingOrderId(
         null
       );
-
-      return;
     }
-
-    setOrders(
-      (previous) =>
-        previous.filter(
-          (order) =>
-            order.id !== id
-        )
-    );
-
-    setSuccess(
-      "Order deleted."
-    );
-
-    setDeletingOrderId(
-      null
-    );
   }
 
   return (
@@ -704,8 +754,8 @@ export default function AdminOrdersPage() {
 
             <p className="mt-3 text-[#8B6B5B]">
               Manage orders,
-              payments, coupons and
-              fulfilment.
+              payments, shipping,
+              coupons and fulfilment.
             </p>
           </div>
 
@@ -716,9 +766,7 @@ export default function AdminOrdersPage() {
                 true
               )
             }
-            disabled={
-              refreshing
-            }
+            disabled={refreshing}
             className="inline-flex w-fit items-center gap-2 rounded-full border border-[#D9C8BC] bg-white px-5 py-3 text-sm font-semibold text-[#5A2D2D] transition hover:bg-[#FCF8F4] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <RefreshCw
@@ -810,9 +858,16 @@ export default function AdminOrdersPage() {
               )}
             </p>
 
+            <p className="mt-2 text-xs leading-5 text-[#8B6B5B]">
+              Shipping:{" "}
+              {formatCurrency(
+                statistics.totalShipping
+              )}
+            </p>
+
             {statistics.totalDiscount >
             0 ? (
-              <p className="mt-2 text-xs text-[#8B6B5B]">
+              <p className="text-xs leading-5 text-[#8B6B5B]">
                 Discounts:{" "}
                 {formatCurrency(
                   statistics.totalDiscount
@@ -831,7 +886,7 @@ export default function AdminOrdersPage() {
 
             <input
               type="search"
-              placeholder="Search order number, customer, email, phone, coupon or status..."
+              placeholder="Search order number, customer, email, phone, address, coupon or status..."
               value={search}
               onChange={(
                 event
@@ -853,9 +908,7 @@ export default function AdminOrdersPage() {
               className="mt-0.5 shrink-0"
             />
 
-            <p>
-              {error}
-            </p>
+            <p>{error}</p>
           </div>
         ) : null}
 
@@ -866,9 +919,7 @@ export default function AdminOrdersPage() {
               className="mt-0.5 shrink-0"
             />
 
-            <p>
-              {success}
-            </p>
+            <p>{success}</p>
           </div>
         ) : null}
 
@@ -903,7 +954,7 @@ export default function AdminOrdersPage() {
         ) : (
           <div className="mt-8 overflow-hidden rounded-3xl border border-[#E8DDD3] bg-white shadow-sm">
             <div className="overflow-x-auto">
-              <table className="min-w-[1450px] w-full">
+              <table className="w-full min-w-[1500px]">
                 <thead className="bg-[#F8F4EF]">
                   <tr className="text-left text-xs uppercase tracking-[0.12em] text-[#6B4A42]">
                     <th className="px-5 py-4">
@@ -915,7 +966,7 @@ export default function AdminOrdersPage() {
                     </th>
 
                     <th className="px-5 py-4">
-                      Shipping
+                      Delivery Address
                     </th>
 
                     <th className="px-5 py-4">
@@ -947,16 +998,45 @@ export default function AdminOrdersPage() {
                 <tbody>
                   {filteredOrders.map(
                     (order) => {
+                      const shipping =
+                        Math.max(
+                          0,
+                          toNumber(
+                            order.shipping
+                          )
+                        );
+
+                      const discount =
+                        Math.max(
+                          0,
+                          toNumber(
+                            order.discount_amount
+                          )
+                        );
+
+                      const total =
+                        Math.max(
+                          0,
+                          toNumber(
+                            order.total
+                          )
+                        );
+
                       const subtotal =
                         order.subtotal ===
                         null
-                          ? order.total
-                          : order.subtotal;
-
-                      const discount =
-                        toNumber(
-                          order.discount_amount
-                        );
+                          ? Math.max(
+                              0,
+                              total +
+                                discount -
+                                shipping
+                            )
+                          : Math.max(
+                              0,
+                              toNumber(
+                                order.subtotal
+                              )
+                            );
 
                       const itemCount =
                         getItemCount(
@@ -970,6 +1050,14 @@ export default function AdminOrdersPage() {
                       const isDeleting =
                         deletingOrderId ===
                         order.id;
+
+                      const currentOrderStatus =
+                        order.status ??
+                        "Pending";
+
+                      const currentPaymentStatus =
+                        order.payment_status ??
+                        "Pending";
 
                       return (
                         <tr
@@ -988,9 +1076,7 @@ export default function AdminOrdersPage() {
                             </p>
 
                             <p className="mt-2 max-w-[150px] break-all text-xs text-[#9A8174]">
-                              {
-                                order.id
-                              }
+                              {order.id}
                             </p>
                           </td>
 
@@ -1030,17 +1116,21 @@ export default function AdminOrdersPage() {
                                 )}
                             </p>
 
-                            <p>
-                              {
-                                order.postal_code
-                              }
-                            </p>
+                            {order.postal_code ? (
+                              <p>
+                                {
+                                  order.postal_code
+                                }
+                              </p>
+                            ) : null}
 
-                            <p>
-                              {
-                                order.country
-                              }
-                            </p>
+                            {order.country ? (
+                              <p>
+                                {
+                                  order.country
+                                }
+                              </p>
+                            ) : null}
                           </td>
 
                           <td className="px-5 py-5">
@@ -1059,7 +1149,7 @@ export default function AdminOrdersPage() {
 
                           <td className="px-5 py-5">
                             <div className="space-y-2 text-sm">
-                              <div className="flex min-w-[190px] justify-between gap-4 text-[#7A6464]">
+                              <div className="flex min-w-[210px] justify-between gap-4 text-[#7A6464]">
                                 <span>
                                   Subtotal
                                 </span>
@@ -1071,10 +1161,36 @@ export default function AdminOrdersPage() {
                                 </span>
                               </div>
 
+                              <div className="flex min-w-[210px] justify-between gap-4 text-[#7A6464]">
+                                <span className="inline-flex items-center gap-1">
+                                  <Truck
+                                    size={13}
+                                  />
+
+                                  Shipping
+                                </span>
+
+                                <span
+                                  className={
+                                    shipping ===
+                                    0
+                                      ? "font-semibold text-emerald-700"
+                                      : ""
+                                  }
+                                >
+                                  {shipping ===
+                                  0
+                                    ? "Free"
+                                    : formatCurrency(
+                                        shipping
+                                      )}
+                                </span>
+                              </div>
+
                               {order.coupon_code &&
                               discount >
                                 0 ? (
-                                <div className="flex min-w-[190px] justify-between gap-4 text-emerald-700">
+                                <div className="flex min-w-[210px] justify-between gap-4 text-emerald-700">
                                   <span className="inline-flex items-center gap-1">
                                     <Tag
                                       size={13}
@@ -1094,14 +1210,14 @@ export default function AdminOrdersPage() {
                                 </div>
                               ) : null}
 
-                              <div className="flex min-w-[190px] justify-between gap-4 border-t border-[#EEE5DE] pt-2 font-semibold text-[#4B2E2E]">
+                              <div className="flex min-w-[210px] justify-between gap-4 border-t border-[#EEE5DE] pt-2 font-semibold text-[#4B2E2E]">
                                 <span>
                                   Total
                                 </span>
 
                                 <span>
                                   {formatCurrency(
-                                    order.total
+                                    total
                                   )}
                                 </span>
                               </div>
@@ -1116,22 +1232,30 @@ export default function AdminOrdersPage() {
 
                             <select
                               value={
-                                order.payment_status ??
-                                "Pending"
+                                currentPaymentStatus
                               }
                               disabled={
                                 isUpdating
                               }
                               onChange={(
                                 event
-                              ) =>
-                                void updatePaymentStatus(
-                                  order.id,
+                              ) => {
+                                const value =
                                   event
                                     .target
-                                    .value as PaymentStatus
-                                )
-                              }
+                                    .value;
+
+                                if (
+                                  isPaymentStatus(
+                                    value
+                                  )
+                                ) {
+                                  void updatePaymentStatus(
+                                    order.id,
+                                    value
+                                  );
+                                }
+                              }}
                               className={`rounded-xl border px-3 py-2 text-sm font-medium outline-none disabled:cursor-not-allowed disabled:opacity-60 ${getPaymentStatusClasses(
                                 order.payment_status
                               )}`}
@@ -1160,22 +1284,30 @@ export default function AdminOrdersPage() {
                           <td className="px-5 py-5">
                             <select
                               value={
-                                order.status ??
-                                "Pending"
+                                currentOrderStatus
                               }
                               disabled={
                                 isUpdating
                               }
                               onChange={(
                                 event
-                              ) =>
-                                void updateOrderStatus(
-                                  order.id,
+                              ) => {
+                                const value =
                                   event
                                     .target
-                                    .value as OrderStatus
-                                )
-                              }
+                                    .value;
+
+                                if (
+                                  isOrderStatus(
+                                    value
+                                  )
+                                ) {
+                                  void updateOrderStatus(
+                                    order.id,
+                                    value
+                                  );
+                                }
+                              }}
                               className={`rounded-xl border px-3 py-2 text-sm font-medium outline-none disabled:cursor-not-allowed disabled:opacity-60 ${getOrderStatusClasses(
                                 order.status
                               )}`}

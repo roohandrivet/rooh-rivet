@@ -86,11 +86,59 @@ type CouponResult = {
   code: string | null;
 };
 
+type ShippingSettingsRow = {
+  india_shipping_cost:
+    | number
+    | string
+    | null;
+  india_free_shipping_threshold:
+    | number
+    | string
+    | null;
+  international_shipping_per_item:
+    | number
+    | string
+    | null;
+  international_discount_threshold:
+    | number
+    | string
+    | null;
+  international_shipping_discount_percent:
+    | number
+    | string
+    | null;
+};
+
+type ShippingSettings = {
+  indiaShippingCost: number;
+  indiaFreeShippingThreshold: number;
+  internationalShippingPerItem: number;
+  internationalDiscountThreshold: number;
+  internationalShippingDiscountPercent: number;
+};
+
 const ALLOWED_PAYMENT_METHODS =
   new Set<string>([
     "Credit / Debit Card",
     "Bank Transfer",
   ]);
+
+const INDIA_COUNTRY_NAMES =
+  new Set<string>([
+    "india",
+    "in",
+    "bharat",
+    "republic of india",
+  ]);
+
+const DEFAULT_SHIPPING_SETTINGS:
+  ShippingSettings = {
+    indiaShippingCost: 100,
+    indiaFreeShippingThreshold: 999,
+    internationalShippingPerItem: 1000,
+    internationalDiscountThreshold: 10000,
+    internationalShippingDiscountPercent: 50,
+  };
 
 function getSupabaseAdmin() {
   const supabaseUrl =
@@ -129,12 +177,31 @@ function toNumber(
     | null
     | undefined
 ): number {
-  const parsed =
-    Number(value);
+  const parsed = Number(value);
 
   return Number.isFinite(parsed)
     ? parsed
     : 0;
+}
+
+function toNonNegativeNumber(
+  value:
+    | number
+    | string
+    | null
+    | undefined,
+  fallback: number
+): number {
+  const parsed = Number(value);
+
+  if (
+    !Number.isFinite(parsed) ||
+    parsed < 0
+  ) {
+    return fallback;
+  }
+
+  return parsed;
 }
 
 function roundCurrency(
@@ -142,8 +209,7 @@ function roundCurrency(
 ): number {
   return (
     Math.round(
-      (value +
-        Number.EPSILON) *
+      (value + Number.EPSILON) *
         100
     ) / 100
   );
@@ -395,16 +461,136 @@ async function validateCoupon(
 
   return {
     coupon,
-
     discountAmount:
       calculateDiscount(
         coupon,
         subtotal
       ),
-
-    code:
-      coupon.code,
+    code: coupon.code,
   };
+}
+
+async function loadShippingSettings(
+  supabase:
+    ReturnType<
+      typeof getSupabaseAdmin
+    >
+): Promise<ShippingSettings> {
+  const {
+    data,
+    error,
+  } = await supabase
+    .from("settings")
+    .select(
+      "india_shipping_cost, india_free_shipping_threshold, international_shipping_per_item, international_discount_threshold, international_shipping_discount_percent"
+    )
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const row =
+    data as
+      | ShippingSettingsRow
+      | null;
+
+  if (!row) {
+    return DEFAULT_SHIPPING_SETTINGS;
+  }
+
+  return {
+    indiaShippingCost:
+      toNonNegativeNumber(
+        row.india_shipping_cost,
+        DEFAULT_SHIPPING_SETTINGS
+          .indiaShippingCost
+      ),
+    indiaFreeShippingThreshold:
+      toNonNegativeNumber(
+        row.india_free_shipping_threshold,
+        DEFAULT_SHIPPING_SETTINGS
+          .indiaFreeShippingThreshold
+      ),
+    internationalShippingPerItem:
+      toNonNegativeNumber(
+        row.international_shipping_per_item,
+        DEFAULT_SHIPPING_SETTINGS
+          .internationalShippingPerItem
+      ),
+    internationalDiscountThreshold:
+      toNonNegativeNumber(
+        row.international_discount_threshold,
+        DEFAULT_SHIPPING_SETTINGS
+          .internationalDiscountThreshold
+      ),
+    internationalShippingDiscountPercent:
+      Math.min(
+        100,
+        toNonNegativeNumber(
+          row.international_shipping_discount_percent,
+          DEFAULT_SHIPPING_SETTINGS
+            .internationalShippingDiscountPercent
+        )
+      ),
+  };
+}
+
+function calculateShipping(
+  country: string,
+  subtotal: number,
+  totalItemQuantity: number,
+  settings: ShippingSettings
+): number {
+  const normalizedCountry =
+    country
+      .trim()
+      .toLowerCase();
+
+  const isIndia =
+    INDIA_COUNTRY_NAMES.has(
+      normalizedCountry
+    );
+
+  if (isIndia) {
+    if (
+      subtotal >=
+      settings
+        .indiaFreeShippingThreshold
+    ) {
+      return 0;
+    }
+
+    return roundCurrency(
+      settings.indiaShippingCost
+    );
+  }
+
+  const fullInternationalShipping =
+    settings
+      .internationalShippingPerItem *
+    totalItemQuantity;
+
+  if (
+    subtotal >=
+    settings
+      .internationalDiscountThreshold
+  ) {
+    return roundCurrency(
+      fullInternationalShipping *
+        (
+          1 -
+          settings
+            .internationalShippingDiscountPercent /
+            100
+        )
+    );
+  }
+
+  return roundCurrency(
+    fullInternationalShipping
+  );
 }
 
 export async function POST(
@@ -592,6 +778,7 @@ export async function POST(
         [];
 
     let subtotal = 0;
+    let totalItemQuantity = 0;
 
     for (
       const requestedItem of
@@ -669,21 +856,16 @@ export async function POST(
         price *
         requestedItem.quantity;
 
+      totalItemQuantity +=
+        requestedItem.quantity;
+
       canonicalItems.push({
-        id:
-          product.id,
-
-        slug:
-          product.slug,
-
-        name:
-          product.name,
-
+        id: product.id,
+        slug: product.slug,
+        name: product.name,
         quantity:
           requestedItem.quantity,
-
         price,
-
         image:
           product.image ?? "",
       });
@@ -720,7 +902,18 @@ export async function POST(
       );
     }
 
-    const shipping = 0;
+    const shippingSettings =
+      await loadShippingSettings(
+        supabase
+      );
+
+    const shipping =
+      calculateShipping(
+        country,
+        subtotal,
+        totalItemQuantity,
+        shippingSettings
+      );
 
     const total =
       roundCurrency(
@@ -728,7 +921,8 @@ export async function POST(
           0,
           subtotal +
             shipping -
-            couponResult.discountAmount
+            couponResult
+              .discountAmount
         )
       );
 
@@ -744,46 +938,31 @@ export async function POST(
     } = await supabase
       .from("orders")
       .insert({
-        user_id:
-          user.id,
-
+        user_id: user.id,
         customer_name:
           customerName,
-
         email,
-
         phone,
-
         address,
-
         city,
-
         state,
-
         postal_code:
           postalCode,
-
         country,
-
         payment_method:
           paymentMethod,
-
         subtotal,
-
+        shipping,
         coupon_code:
           couponResult.code,
-
         discount_amount:
-          couponResult.discountAmount,
-
+          couponResult
+            .discountAmount,
         total,
-
         status:
           orderStatus,
-
         payment_status:
           paymentStatus,
-
         items:
           canonicalItems,
       })
@@ -842,7 +1021,6 @@ export async function POST(
         .update({
           stock:
             newStock,
-
           ...(newStock === 0
             ? {
                 active:
@@ -889,36 +1067,27 @@ export async function POST(
       await resend.emails.send({
         from:
           EMAIL_FROM,
-
         to:
           email,
-
         subject:
           `Your Rooh & Rivet Order #${order.id} is Confirmed`,
-
         react:
           OrderConfirmation({
             customerName,
-
             orderId:
               String(
                 order.id
               ),
-
             subtotal,
-
+            shipping,
             couponCode:
               couponResult.code,
-
             discountAmount:
-              couponResult.discountAmount,
-
+              couponResult
+                .discountAmount,
             total,
-
             paymentMethod,
-
             paymentStatus,
-
             orderStatus,
           }),
       });
@@ -932,20 +1101,15 @@ export async function POST(
     return NextResponse.json(
       {
         success: true,
-
         order,
-
         pricing: {
           subtotal,
-
           shipping,
-
           coupon_code:
             couponResult.code,
-
           discount_amount:
-            couponResult.discountAmount,
-
+            couponResult
+              .discountAmount,
           total,
         },
       },

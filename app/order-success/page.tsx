@@ -7,6 +7,7 @@ import {
   ReceiptText,
   Sparkles,
   Tag,
+  Truck,
   User,
 } from "lucide-react";
 import {
@@ -42,6 +43,10 @@ type OrderRow = {
     | string
     | null;
   subtotal:
+    | number
+    | string
+    | null;
+  shipping:
     | number
     | string
     | null;
@@ -140,7 +145,9 @@ function getStatusClasses(
   status: string
 ): string {
   const normalizedStatus =
-    status.toLowerCase();
+    status
+      .trim()
+      .toLowerCase();
 
   if (
     normalizedStatus ===
@@ -223,6 +230,7 @@ export default async function OrderSuccessPage({
         customer_name,
         email,
         subtotal,
+        shipping,
         coupon_code,
         discount_amount,
         total,
@@ -285,18 +293,35 @@ export default async function OrderSuccessPage({
     data as OrderRow;
 
   const subtotal =
-    toNumber(
-      order.subtotal
+    Math.max(
+      0,
+      toNumber(
+        order.subtotal
+      )
+    );
+
+  const shipping =
+    Math.max(
+      0,
+      toNumber(
+        order.shipping
+      )
     );
 
   const discountAmount =
-    toNumber(
-      order.discount_amount
+    Math.max(
+      0,
+      toNumber(
+        order.discount_amount
+      )
     );
 
   const total =
-    toNumber(
-      order.total
+    Math.max(
+      0,
+      toNumber(
+        order.total
+      )
     );
 
   const customerName =
@@ -324,6 +349,17 @@ export default async function OrderSuccessPage({
     formatOrderDate(
       order.created_at
     );
+
+  const confirmationEmail =
+    order.email?.trim() ||
+    user.email ||
+    "Not available";
+
+  const hasCoupon =
+    Boolean(
+      order.coupon_code?.trim()
+    ) &&
+    discountAmount > 0;
 
   return (
     <main className="min-h-screen bg-[#F8F4EF] px-6 py-16 sm:px-8 sm:py-20">
@@ -425,8 +461,7 @@ export default async function OrderSuccessPage({
               </div>
 
               <p className="mt-3 break-all text-sm text-[#7A6464]">
-                {order.email ??
-                  user.email}
+                {confirmationEmail}
               </p>
             </div>
           </div>
@@ -449,27 +484,48 @@ export default async function OrderSuccessPage({
                 </span>
               </div>
 
-              {order.coupon_code &&
-              discountAmount > 0 ? (
-                <>
-                  <div className="flex items-center justify-between gap-4 text-emerald-700">
-                    <span className="inline-flex items-center gap-2">
-                      <Tag
-                        size={16}
-                      />
+              <div className="flex items-center justify-between gap-4 text-[#7A6464]">
+                <span className="inline-flex items-center gap-2">
+                  <Truck
+                    size={16}
+                  />
 
-                      Coupon{" "}
-                      {order.coupon_code}
-                    </span>
+                  Shipping
+                </span>
 
-                    <span>
-                      -
-                      {formatCurrency(
-                        discountAmount
+                <span
+                  className={
+                    shipping === 0
+                      ? "font-semibold text-emerald-700"
+                      : ""
+                  }
+                >
+                  {shipping === 0
+                    ? "Free"
+                    : formatCurrency(
+                        shipping
                       )}
-                    </span>
-                  </div>
-                </>
+                </span>
+              </div>
+
+              {hasCoupon ? (
+                <div className="flex items-center justify-between gap-4 text-emerald-700">
+                  <span className="inline-flex items-center gap-2">
+                    <Tag
+                      size={16}
+                    />
+
+                    Coupon{" "}
+                    {order.coupon_code}
+                  </span>
+
+                  <span>
+                    -
+                    {formatCurrency(
+                      discountAmount
+                    )}
+                  </span>
+                </div>
               ) : null}
 
               <div className="flex items-center justify-between gap-4 border-t border-[#E8DDD3] pt-5 text-xl font-semibold text-[#4B2E2E] sm:text-2xl">

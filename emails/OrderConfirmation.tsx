@@ -17,6 +17,7 @@ export type OrderConfirmationEmailProps = {
   orderId: string;
   total: number;
   subtotal?: number;
+  shipping?: number;
   couponCode?: string | null;
   discountAmount?: number;
   paymentMethod?: string;
@@ -46,6 +47,7 @@ export default function OrderConfirmation({
   orderId,
   total,
   subtotal,
+  shipping = 0,
   couponCode = null,
   discountAmount = 0,
   paymentMethod = "Not specified",
@@ -54,7 +56,12 @@ export default function OrderConfirmation({
 }: OrderConfirmationEmailProps) {
   const safeTotal =
     Number.isFinite(total)
-      ? total
+      ? Math.max(0, total)
+      : 0;
+
+  const safeShipping =
+    Number.isFinite(shipping)
+      ? Math.max(0, shipping)
       : 0;
 
   const safeDiscount =
@@ -71,9 +78,13 @@ export default function OrderConfirmation({
     typeof subtotal ===
       "number" &&
     Number.isFinite(subtotal)
-      ? subtotal
-      : safeTotal +
-        safeDiscount;
+      ? Math.max(0, subtotal)
+      : Math.max(
+          0,
+          safeTotal +
+            safeDiscount -
+            safeShipping
+        );
 
   const hasCoupon =
     Boolean(
@@ -409,35 +420,69 @@ export default function OrderConfirmation({
                 </span>
               </Text>
 
+              <Text
+                style={{
+                  color:
+                    "#7A6464",
+                  fontSize:
+                    "15px",
+                  lineHeight:
+                    "24px",
+                  margin:
+                    hasCoupon
+                      ? "0 0 12px"
+                      : 0,
+                }}
+              >
+                Shipping
+                <span
+                  style={{
+                    float:
+                      "right",
+                    color:
+                      safeShipping === 0
+                        ? "#16794C"
+                        : "#4B2E2E",
+                    fontWeight:
+                      safeShipping === 0
+                        ? 600
+                        : 400,
+                  }}
+                >
+                  {safeShipping === 0
+                    ? "Free"
+                    : formatCurrency(
+                        safeShipping
+                      )}
+                </span>
+              </Text>
+
               {hasCoupon ? (
-                <>
-                  <Text
+                <Text
+                  style={{
+                    color:
+                      "#16794C",
+                    fontSize:
+                      "15px",
+                    lineHeight:
+                      "24px",
+                    margin: 0,
+                  }}
+                >
+                  Coupon{" "}
+                  {couponCode}
+                  <span
                     style={{
-                      color:
-                        "#16794C",
-                      fontSize:
-                        "15px",
-                      lineHeight:
-                        "24px",
-                      margin:
-                        "0 0 12px",
+                      float:
+                        "right",
                     }}
                   >
-                    Coupon{" "}
-                    {couponCode}
-                    <span
-                      style={{
-                        float:
-                          "right",
-                      }}
-                    >
-                      -
-                      {formatCurrency(
-                        safeDiscount
-                      )}
-                    </span>
-                  </Text>
-                </>
+                    -
+                    {formatCurrency(
+                      safeDiscount
+                    )}
+                  </span>
+                </Text>
               ) : null}
 
               <Hr

@@ -21,11 +21,10 @@ import {
   Star,
   Tag,
   Truck,
+  type LucideIcon,
 } from "lucide-react";
 
-import {
-  supabase,
-} from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 type NumericValue =
   | number
@@ -36,60 +35,31 @@ type OrderItem = {
   id: string;
   slug: string;
   name: string;
-  image:
-    | string
-    | null;
+  image: string | null;
   quantity: number;
   price: number;
 };
 
 type Order = {
   id: string;
-  user_id:
-    | string
-    | null;
-  customer_name:
-    | string
-    | null;
-  email:
-    | string
-    | null;
-  phone:
-    | string
-    | null;
-  address:
-    | string
-    | null;
-  city:
-    | string
-    | null;
-  state:
-    | string
-    | null;
-  postal_code:
-    | string
-    | null;
-  country:
-    | string
-    | null;
-  payment_method:
-    | string
-    | null;
-  payment_status:
-    | string
-    | null;
+  user_id: string | null;
+  customer_name: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  country: string | null;
+  payment_method: string | null;
+  payment_status: string | null;
   subtotal: NumericValue;
-  coupon_code:
-    | string
-    | null;
+  shipping: NumericValue;
+  coupon_code: string | null;
   discount_amount: NumericValue;
   total: NumericValue;
-  status:
-    | string
-    | null;
-  created_at:
-    | string
-    | null;
+  status: string | null;
+  created_at: string | null;
   items: OrderItem[];
 };
 
@@ -103,45 +73,34 @@ type RawOrder = Omit<
 type TimelineStep = {
   title: string;
   description: string;
-  icon:
-    | typeof Package
-    | typeof Truck
-    | typeof CheckCircle2;
+  icon: LucideIcon;
 };
 
 const TIMELINE_STEPS:
   TimelineStep[] = [
     {
-      title:
-        "Order Placed",
+      title: "Order Placed",
       description:
         "Your order has been received successfully.",
-      icon:
-        ReceiptText,
+      icon: ReceiptText,
     },
     {
-      title:
-        "Processing",
+      title: "Processing",
       description:
         "Your jewellery is being carefully prepared and checked.",
-      icon:
-        Package,
+      icon: Package,
     },
     {
-      title:
-        "Shipped",
+      title: "Shipped",
       description:
         "Your order has been dispatched and is on its way.",
-      icon:
-        Truck,
+      icon: Truck,
     },
     {
-      title:
-        "Delivered",
+      title: "Delivered",
       description:
         "Your Rooh & Rivet jewellery has arrived.",
-      icon:
-        CheckCircle2,
+      icon: CheckCircle2,
     },
   ];
 
@@ -152,8 +111,7 @@ function isRecord(
   unknown
 > {
   return (
-    typeof value ===
-      "object" &&
+    typeof value === "object" &&
     value !== null &&
     !Array.isArray(value)
   );
@@ -169,11 +127,7 @@ function getString(
 }
 
 function toNumber(
-  value:
-    | number
-    | string
-    | null
-    | undefined
+  value: unknown
 ): number {
   const parsed =
     Number(value);
@@ -216,10 +170,7 @@ function parseOrderItems(
             1,
             Math.floor(
               toNumber(
-                item.quantity as
-                  | number
-                  | string
-                  | null
+                item.quantity
               )
             )
           );
@@ -228,10 +179,7 @@ function parseOrderItems(
           Math.max(
             0,
             toNumber(
-              item.price as
-                | number
-                | string
-                | null
+              item.price
             )
           );
 
@@ -246,7 +194,7 @@ function parseOrderItems(
             item.slug
           ).trim();
 
-        const imageValue =
+        const image =
           getString(
             item.image
           ).trim();
@@ -258,8 +206,7 @@ function parseOrderItems(
           quantity,
           price,
           image:
-            imageValue ||
-            null,
+            image || null,
         };
       }
     )
@@ -272,21 +219,15 @@ function parseOrderItems(
 }
 
 function formatCurrency(
-  value:
-    | NumericValue
-    | number
+  value: unknown
 ): string {
   return new Intl.NumberFormat(
     "en-IN",
     {
-      style:
-        "currency",
-      currency:
-        "INR",
-      minimumFractionDigits:
-        0,
-      maximumFractionDigits:
-        2,
+      style: "currency",
+      currency: "INR",
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
     }
   ).format(
     toNumber(value)
@@ -294,9 +235,7 @@ function formatCurrency(
 }
 
 function formatDate(
-  value:
-    | string
-    | null
+  value: string | null
 ): string {
   if (!value) {
     return "Unknown date";
@@ -316,20 +255,15 @@ function formatDate(
   return date.toLocaleDateString(
     "en-IN",
     {
-      day:
-        "numeric",
-      month:
-        "long",
-      year:
-        "numeric",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
     }
   );
 }
 
 function formatDateTime(
-  value:
-    | string
-    | null
+  value: string | null
 ): string {
   if (!value) {
     return "Unknown date";
@@ -349,24 +283,17 @@ function formatDateTime(
   return date.toLocaleString(
     "en-IN",
     {
-      day:
-        "numeric",
-      month:
-        "long",
-      year:
-        "numeric",
-      hour:
-        "numeric",
-      minute:
-        "2-digit",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
     }
   );
 }
 
 function getOrderStatusClasses(
-  status:
-    | string
-    | null
+  status: string | null
 ): string {
   switch (
     status
@@ -391,9 +318,7 @@ function getOrderStatusClasses(
 }
 
 function getPaymentStatusClasses(
-  status:
-    | string
-    | null
+  status: string | null
 ): string {
   switch (
     status
@@ -415,9 +340,7 @@ function getPaymentStatusClasses(
 }
 
 function getTimelineIndex(
-  status:
-    | string
-    | null
+  status: string | null
 ): number {
   switch (
     status
@@ -438,9 +361,73 @@ function getTimelineIndex(
   }
 }
 
+function OrderItemContent({
+  item,
+}: {
+  item: OrderItem;
+}) {
+  const itemTotal =
+    item.price *
+    item.quantity;
+
+  return (
+    <>
+      <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-[#F8F4EF]">
+        {item.image ? (
+          <Image
+            src={item.image}
+            alt={item.name}
+            fill
+            sizes="96px"
+            className="object-cover"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center px-3 text-center text-xs text-[#8B6B5B]">
+            No Image
+          </div>
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <h3 className="text-lg font-semibold text-[#4B2E2E] sm:text-xl">
+          {item.name}
+        </h3>
+
+        <p className="mt-2 text-sm text-[#8B6B5B]">
+          Quantity:{" "}
+          {item.quantity}
+        </p>
+
+        <p className="mt-1 text-sm text-[#8B6B5B]">
+          Price per item:{" "}
+          {formatCurrency(
+            item.price
+          )}
+        </p>
+      </div>
+
+      <div className="text-left sm:text-right">
+        <p className="text-xs uppercase tracking-[0.12em] text-[#8B6B5B]">
+          Item Total
+        </p>
+
+        <p className="mt-2 text-lg font-semibold text-[#4B2E2E]">
+          {formatCurrency(
+            itemTotal
+          )}
+        </p>
+      </div>
+    </>
+  );
+}
+
 export default function OrderDetailsPage() {
   const params =
-    useParams();
+    useParams<{
+      id:
+        | string
+        | string[];
+    }>();
 
   const router =
     useRouter();
@@ -458,8 +445,7 @@ export default function OrderDetailsPage() {
   const [
     loading,
     setLoading,
-  ] =
-    useState(true);
+  ] = useState(true);
 
   const [
     order,
@@ -472,14 +458,12 @@ export default function OrderDetailsPage() {
   const [
     error,
     setError,
-  ] =
-    useState("");
+  ] = useState("");
 
   const [
     alreadyReviewed,
     setAlreadyReviewed,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const loadOrder =
     useCallback(
@@ -489,7 +473,9 @@ export default function OrderDetailsPage() {
             "Invalid order reference."
           );
 
-          setLoading(false);
+          setLoading(
+            false
+          );
 
           return;
         }
@@ -542,6 +528,7 @@ export default function OrderDetailsPage() {
                 payment_method,
                 payment_status,
                 subtotal,
+                shipping,
                 coupon_code,
                 discount_amount,
                 total,
@@ -560,16 +547,12 @@ export default function OrderDetailsPage() {
             )
             .maybeSingle();
 
-          if (
-            orderError
-          ) {
+          if (orderError) {
             throw orderError;
           }
 
           if (!orderData) {
-            setOrder(
-              null
-            );
+            setOrder(null);
 
             setError(
               "This order could not be found or does not belong to your account."
@@ -619,9 +602,7 @@ export default function OrderDetailsPage() {
             loadError
           );
 
-          setOrder(
-            null
-          );
+          setOrder(null);
 
           setError(
             loadError instanceof
@@ -630,9 +611,7 @@ export default function OrderDetailsPage() {
               : "Unable to load this order."
           );
         } finally {
-          setLoading(
-            false
-          );
+          setLoading(false);
         }
       },
       [
@@ -704,23 +683,43 @@ export default function OrderDetailsPage() {
     order.payment_method?.trim() ||
     "Not specified";
 
+  const shipping =
+    Math.max(
+      0,
+      toNumber(
+        order.shipping
+      )
+    );
+
   const discountAmount =
-    toNumber(
-      order.discount_amount
+    Math.max(
+      0,
+      toNumber(
+        order.discount_amount
+      )
     );
 
   const total =
-    toNumber(
-      order.total
+    Math.max(
+      0,
+      toNumber(
+        order.total
+      )
     );
 
   const subtotal =
-    order.subtotal ===
-    null
-      ? total +
-        discountAmount
-      : toNumber(
-          order.subtotal
+    order.subtotal === null
+      ? Math.max(
+          0,
+          total +
+            discountAmount -
+            shipping
+        )
+      : Math.max(
+          0,
+          toNumber(
+            order.subtotal
+          )
         );
 
   const timelineIndex =
@@ -728,13 +727,22 @@ export default function OrderDetailsPage() {
       status
     );
 
+  const normalizedStatus =
+    status.toLowerCase();
+
   const isCancelled =
-    status.toLowerCase() ===
+    normalizedStatus ===
     "cancelled";
 
   const isDelivered =
-    status.toLowerCase() ===
+    normalizedStatus ===
     "delivered";
+
+  const hasCoupon =
+    Boolean(
+      order.coupon_code?.trim()
+    ) &&
+    discountAmount > 0;
 
   return (
     <main className="min-h-screen bg-[#F8F4EF] py-12 sm:py-16">
@@ -848,12 +856,8 @@ export default function OrderDetailsPage() {
                   </h2>
 
                   <p className="mt-2 text-sm text-[#8B6B5B]">
-                    {
-                      order.items
-                        .length
-                    }{" "}
-                    {order.items
-                      .length ===
+                    {order.items.length}{" "}
+                    {order.items.length ===
                     1
                       ? "product"
                       : "products"}
@@ -866,8 +870,7 @@ export default function OrderDetailsPage() {
                 />
               </div>
 
-              {order.items
-                .length ===
+              {order.items.length ===
               0 ? (
                 <p className="mt-8 rounded-2xl bg-[#F8F4EF] p-6 text-[#8B6B5B]">
                   No products were
@@ -879,87 +882,27 @@ export default function OrderDetailsPage() {
                     (
                       item,
                       index
-                    ) => {
-                      const itemTotal =
-                        item.price *
-                        item.quantity;
-
-                      const content = (
-                        <>
-                          <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl bg-[#F8F4EF]">
-                            {item.image ? (
-                              <Image
-                                src={
-                                  item.image
-                                }
-                                alt={
-                                  item.name
-                                }
-                                fill
-                                sizes="96px"
-                                className="object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center px-3 text-center text-xs text-[#8B6B5B]">
-                                No Image
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="min-w-0 flex-1">
-                            <h3 className="text-lg font-semibold text-[#4B2E2E] sm:text-xl">
-                              {
-                                item.name
-                              }
-                            </h3>
-
-                            <p className="mt-2 text-sm text-[#8B6B5B]">
-                              Quantity:{" "}
-                              {
-                                item.quantity
-                              }
-                            </p>
-
-                            <p className="mt-1 text-sm text-[#8B6B5B]">
-                              Price per
-                              item:{" "}
-                              {formatCurrency(
-                                item.price
-                              )}
-                            </p>
-                          </div>
-
-                          <div className="text-left sm:text-right">
-                            <p className="text-xs uppercase tracking-[0.12em] text-[#8B6B5B]">
-                              Item Total
-                            </p>
-
-                            <p className="mt-2 text-lg font-semibold text-[#4B2E2E]">
-                              {formatCurrency(
-                                itemTotal
-                              )}
-                            </p>
-                          </div>
-                        </>
-                      );
-
-                      return item.slug ? (
+                    ) =>
+                      item.slug ? (
                         <Link
                           key={`${item.id}-${index}`}
                           href={`/shop/${item.slug}`}
                           className="flex flex-col gap-5 py-6 first:pt-0 last:pb-0 sm:flex-row sm:items-center"
                         >
-                          {content}
+                          <OrderItemContent
+                            item={item}
+                          />
                         </Link>
                       ) : (
                         <div
                           key={`${item.id}-${index}`}
                           className="flex flex-col gap-5 py-6 first:pt-0 last:pb-0 sm:flex-row sm:items-center"
                         >
-                          {content}
+                          <OrderItemContent
+                            item={item}
+                          />
                         </div>
-                      );
-                    }
+                      )
                   )}
                 </div>
               )}
@@ -993,27 +936,38 @@ export default function OrderDetailsPage() {
                 </div>
 
                 <div className="flex items-center justify-between gap-4 text-[#7A6464]">
-                  <span>
+                  <span className="inline-flex items-center gap-2">
+                    <Truck
+                      size={16}
+                    />
+
                     Shipping
                   </span>
 
-                  <span className="text-emerald-700">
-                    Free
+                  <span
+                    className={
+                      shipping === 0
+                        ? "font-semibold text-emerald-700"
+                        : ""
+                    }
+                  >
+                    {shipping === 0
+                      ? "Free"
+                      : formatCurrency(
+                          shipping
+                        )}
                   </span>
                 </div>
 
-                {order.coupon_code &&
-                discountAmount >
-                  0 ? (
+                {hasCoupon ? (
                   <div className="flex items-center justify-between gap-4 text-emerald-700">
                     <span className="inline-flex items-center gap-2">
                       <Tag
                         size={16}
                       />
 
-                      {
-                        order.coupon_code
-                      }
+                      Coupon{" "}
+                      {order.coupon_code}
                     </span>
 
                     <span>
@@ -1068,17 +1022,19 @@ export default function OrderDetailsPage() {
                     )}
                 </p>
 
-                <p>
-                  {
-                    order.postal_code
-                  }
-                </p>
+                {order.postal_code ? (
+                  <p>
+                    {
+                      order.postal_code
+                    }
+                  </p>
+                ) : null}
 
-                <p>
-                  {
-                    order.country
-                  }
-                </p>
+                {order.country ? (
+                  <p>
+                    {order.country}
+                  </p>
+                ) : null}
 
                 <div className="border-t border-[#E8DDD3] pt-4">
                   <p>
@@ -1169,14 +1125,12 @@ export default function OrderDetailsPage() {
 
                     <div>
                       <p className="font-semibold text-red-700">
-                        Order
-                        Cancelled
+                        Order Cancelled
                       </p>
 
                       <p className="mt-1 text-sm leading-6 text-red-600">
-                        This order
-                        has been
-                        cancelled.
+                        This order has
+                        been cancelled.
                       </p>
                     </div>
                   </div>
@@ -1193,16 +1147,15 @@ export default function OrderDetailsPage() {
 
                 <div>
                   <h2 className="font-serif text-2xl text-[#4B2E2E]">
-                    Verified
-                    Purchase
+                    Verified Purchase
                     Review
                   </h2>
 
                   <p className="mt-2 text-sm leading-6 text-[#8B6B5B]">
                     Share your
-                    experience
-                    after receiving
-                    your jewellery.
+                    experience after
+                    receiving your
+                    jewellery.
                   </p>
                 </div>
               </div>
@@ -1211,15 +1164,14 @@ export default function OrderDetailsPage() {
                 alreadyReviewed ? (
                   <div className="mt-7 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
                     <p className="font-semibold text-emerald-700">
-                      Thank you for
-                      your review.
+                      Thank you for your
+                      review.
                     </p>
 
                     <p className="mt-2 text-sm leading-6 text-emerald-700">
                       Your verified
-                      purchase
-                      review has
-                      already been
+                      purchase review
+                      has already been
                       submitted.
                     </p>
                   </div>
@@ -1235,9 +1187,9 @@ export default function OrderDetailsPage() {
                 <div className="mt-7 rounded-2xl border border-[#E8DDD3] bg-[#F8F4EF] p-5">
                   <p className="text-sm leading-6 text-[#7A6464]">
                     Reviews become
-                    available once
-                    your order has
-                    been delivered.
+                    available once your
+                    order has been
+                    delivered.
                   </p>
                 </div>
               )}
