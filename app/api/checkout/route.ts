@@ -6,14 +6,16 @@ import {
   createClient as createAdminClient,
 } from "@supabase/supabase-js";
 
+import OrderConfirmation from "@/emails/OrderConfirmation";
+import {
+  EMAIL_FROM,
+  resend,
+} from "@/lib/resend";
 import {
   createClient as createServerClient,
 } from "@/lib/supabase/server";
-import {
-  resend,
-  EMAIL_FROM,
-} from "@/lib/resend";
-import OrderConfirmation from "@/emails/OrderConfirmation";
+
+export const runtime = "nodejs";
 
 type RequestedItem = {
   id: string;
@@ -38,10 +40,29 @@ type ProductRow = {
   id: string;
   slug: string;
   name: string;
-  price: number | string | null;
-  image: string | null;
-  stock: number | string | null;
-  active: boolean | null;
+  price:
+    | number
+    | string
+    | null;
+  image:
+    | string
+    | null;
+  stock:
+    | number
+    | string
+    | null;
+  active:
+    | boolean
+    | null;
+  reservation_enabled:
+    | boolean
+    | null;
+  reserved_by:
+    | string
+    | null;
+  reserved_until:
+    | string
+    | null;
 };
 
 type CanonicalOrderItem = {
@@ -81,9 +102,13 @@ type CouponRow = {
 };
 
 type CouponResult = {
-  coupon: CouponRow | null;
+  coupon:
+    | CouponRow
+    | null;
   discountAmount: number;
-  code: string | null;
+  code:
+    | string
+    | null;
 };
 
 type ShippingSettingsRow = {
@@ -117,6 +142,27 @@ type ShippingSettings = {
   internationalShippingDiscountPercent: number;
 };
 
+type InventoryMutation = {
+  productId: string;
+  originalStock: number;
+  updatedStock: number;
+  originalActive:
+    | boolean
+    | null;
+  originalReservedBy:
+    | string
+    | null;
+  originalReservedUntil:
+    | string
+    | null;
+};
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const EMAIL_PATTERN =
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const ALLOWED_PAYMENT_METHODS =
   new Set<string>([
     "Credit / Debit Card",
@@ -139,6 +185,9 @@ const DEFAULT_SHIPPING_SETTINGS:
     internationalDiscountThreshold: 10000,
     internationalShippingDiscountPercent: 50,
   };
+
+const MAX_DISTINCT_ITEMS = 50;
+const MAX_ITEM_QUANTITY = 100;
 
 function getSupabaseAdmin() {
   const supabaseUrl =
@@ -177,9 +226,12 @@ function toNumber(
     | null
     | undefined
 ): number {
-  const parsed = Number(value);
+  const parsed =
+    Number(value);
 
-  return Number.isFinite(parsed)
+  return Number.isFinite(
+    parsed
+  )
     ? parsed
     : 0;
 }
@@ -192,10 +244,13 @@ function toNonNegativeNumber(
     | undefined,
   fallback: number
 ): number {
-  const parsed = Number(value);
+  const parsed =
+    Number(value);
 
   if (
-    !Number.isFinite(parsed) ||
+    !Number.isFinite(
+      parsed
+    ) ||
     parsed < 0
   ) {
     return fallback;
@@ -209,8 +264,10 @@ function roundCurrency(
 ): number {
   return (
     Math.round(
-      (value + Number.EPSILON) *
-        100
+      (
+        value +
+        Number.EPSILON
+      ) * 100
     ) / 100
   );
 }
@@ -222,7 +279,8 @@ function isRecord(
   unknown
 > {
   return (
-    typeof value === "object" &&
+    typeof value ===
+      "object" &&
     value !== null &&
     !Array.isArray(value)
   );
@@ -237,52 +295,213 @@ function getString(
     : "";
 }
 
+async function readCheckoutRequest(
+  request: NextRequest
+): Promise<
+  CheckoutRequest | null
+> {
+  try {
+    const body =
+      (await request.json()) as
+        unknown;
+
+    if (
+      !isRecord(body)
+    ) {
+      return null;
+    }
+
+    return body;
+  } catch {
+    return null;
+  }
+}
+
 function parseItems(
   value: unknown
 ): RequestedItem[] {
-  if (!Array.isArray(value)) {
+  if (
+    !Array.isArray(value)
+  ) {
     return [];
   }
 
   const quantities =
-    new Map<string, number>();
+    new Map<
+      string,
+      number
+    >();
 
-  value.forEach((entry) => {
-    if (!isRecord(entry)) {
-      return;
+  for (
+    const entry of value
+  ) {
+    if (
+      !isRecord(entry)
+    ) {
+      continue;
     }
 
     const id =
-      getString(entry.id);
+      getString(
+        entry.id
+      );
 
     const quantity =
-      Number(entry.quantity);
+      Number(
+        entry.quantity
+      );
 
     if (
       !id ||
+      !UUID_PATTERN.test(id) ||
       !Number.isInteger(
         quantity
       ) ||
-      quantity <= 0
+      quantity <= 0 ||
+      quantity >
+        MAX_ITEM_QUANTITY
     ) {
-      return;
+      continue;
+    }
+
+    const nextQuantity =
+      (
+        quantities.get(id) ??
+        0
+      ) + quantity;
+
+    if (
+      nextQuantity >
+      MAX_ITEM_QUANTITY
+    ) {
+      continue;
     }
 
     quantities.set(
       id,
-      (quantities.get(id) ??
-        0) + quantity
+      nextQuantity
     );
-  });
+
+    if (
+      quantities.size >
+      MAX_DISTINCT_ITEMS
+    ) {
+      return [];
+    }
+  }
 
   return Array.from(
     quantities.entries()
   ).map(
-    ([id, quantity]) => ({
+    ([
+      id,
+      quantity,
+    ]) => ({
       id,
       quantity,
     })
   );
+}
+
+function getTimestamp(
+  value:
+    | string
+    | null
+): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const timestamp =
+    new Date(
+      value
+    ).getTime();
+
+  return Number.isNaN(
+    timestamp
+  )
+    ? null
+    : timestamp;
+}
+
+function hasActiveReservation(
+  product: ProductRow,
+  currentTime: number
+): boolean {
+  const reservationExpiry =
+    getTimestamp(
+      product.reserved_until
+    );
+
+  return (
+    Boolean(
+      product.reserved_by
+    ) &&
+    reservationExpiry !==
+      null &&
+    reservationExpiry >
+      currentTime
+  );
+}
+
+function getReservationError(
+  product: ProductRow,
+  requestedQuantity: number,
+  userId: string,
+  currentTime: number
+): string | null {
+  const reservationExpiry =
+    getTimestamp(
+      product.reserved_until
+    );
+
+  const activeReservation =
+    hasActiveReservation(
+      product,
+      currentTime
+    );
+
+  if (
+    activeReservation &&
+    product.reserved_by !==
+      userId
+  ) {
+    return `${product.name} is currently reserved by another customer.`;
+  }
+
+  if (
+    product.reservation_enabled !==
+    true
+  ) {
+    return null;
+  }
+
+  if (
+    requestedQuantity !== 1
+  ) {
+    return `${product.name} is a one-of-a-kind piece and can only be purchased in a quantity of one.`;
+  }
+
+  if (
+    product.reserved_by ===
+      userId &&
+    reservationExpiry !==
+      null &&
+    reservationExpiry <=
+      currentTime
+  ) {
+    return `Your reservation for ${product.name} has expired. Please return to the product page and reserve it again.`;
+  }
+
+  if (
+    !activeReservation ||
+    product.reserved_by !==
+      userId
+  ) {
+    return `${product.name} must be reserved before checkout. Please return to the product page and add it to your cart again.`;
+  }
+
+  return null;
 }
 
 function isCouponExpired(
@@ -294,9 +513,15 @@ function isCouponExpired(
     return false;
   }
 
+  const dateOnly =
+    expiryDate.slice(
+      0,
+      10
+    );
+
   const expiresAt =
     new Date(
-      `${expiryDate}T23:59:59.999Z`
+      `${dateOnly}T23:59:59.999Z`
     );
 
   if (
@@ -337,7 +562,10 @@ function calculateDiscount(
 
     return roundCurrency(
       subtotal *
-        (percentage / 100)
+        (
+          percentage /
+          100
+        )
     );
   }
 
@@ -388,7 +616,10 @@ async function validateCoupon(
         active
       `
     )
-    .eq("code", code)
+    .eq(
+      "code",
+      code
+    )
     .maybeSingle();
 
   if (error) {
@@ -396,7 +627,9 @@ async function validateCoupon(
   }
 
   const coupon =
-    data as CouponRow | null;
+    data as
+      | CouponRow
+      | null;
 
   if (
     !coupon ||
@@ -421,13 +654,23 @@ async function validateCoupon(
     coupon.maximum_uses ===
     null
       ? null
-      : toNumber(
-          coupon.maximum_uses
+      : Math.max(
+          0,
+          Math.floor(
+            toNumber(
+              coupon.maximum_uses
+            )
+          )
         );
 
   const usageCount =
-    toNumber(
-      coupon.usage_count
+    Math.max(
+      0,
+      Math.floor(
+        toNumber(
+          coupon.usage_count
+        )
+      )
     );
 
   if (
@@ -444,8 +687,11 @@ async function validateCoupon(
     coupon.minimum_order ===
     null
       ? 0
-      : toNumber(
-          coupon.minimum_order
+      : Math.max(
+          0,
+          toNumber(
+            coupon.minimum_order
+          )
         );
 
   if (
@@ -466,7 +712,8 @@ async function validateCoupon(
         coupon,
         subtotal
       ),
-    code: coupon.code,
+    code:
+      coupon.code,
   };
 }
 
@@ -507,24 +754,28 @@ async function loadShippingSettings(
         DEFAULT_SHIPPING_SETTINGS
           .indiaShippingCost
       ),
+
     indiaFreeShippingThreshold:
       toNonNegativeNumber(
         row.india_free_shipping_threshold,
         DEFAULT_SHIPPING_SETTINGS
           .indiaFreeShippingThreshold
       ),
+
     internationalShippingPerItem:
       toNonNegativeNumber(
         row.international_shipping_per_item,
         DEFAULT_SHIPPING_SETTINGS
           .internationalShippingPerItem
       ),
+
     internationalDiscountThreshold:
       toNonNegativeNumber(
         row.international_discount_threshold,
         DEFAULT_SHIPPING_SETTINGS
           .internationalDiscountThreshold
       ),
+
     internationalShippingDiscountPercent:
       Math.min(
         100,
@@ -563,7 +814,8 @@ function calculateShipping(
     }
 
     return roundCurrency(
-      settings.indiaShippingCost
+      settings
+        .indiaShippingCost
     );
   }
 
@@ -593,6 +845,220 @@ function calculateShipping(
   );
 }
 
+async function rollbackInventory(
+  supabase:
+    ReturnType<
+      typeof getSupabaseAdmin
+    >,
+  mutations: InventoryMutation[]
+): Promise<void> {
+  for (
+    const mutation of
+    [...mutations].reverse()
+  ) {
+    const {
+      error,
+    } = await supabase
+      .from("products")
+      .update({
+        stock:
+          mutation.originalStock,
+        active:
+          mutation.originalActive,
+        reserved_by:
+          mutation.originalReservedBy,
+        reserved_until:
+          mutation.originalReservedUntil,
+      })
+      .eq(
+        "id",
+        mutation.productId
+      )
+      .eq(
+        "stock",
+        mutation.updatedStock
+      );
+
+    if (error) {
+      console.error(
+        "Inventory rollback failed:",
+        {
+          productId:
+            mutation.productId,
+          error,
+        }
+      );
+    }
+  }
+}
+
+async function reserveInventoryForOrder(
+  supabase:
+    ReturnType<
+      typeof getSupabaseAdmin
+    >,
+  productsById:
+    Map<
+      string,
+      ProductRow
+    >,
+  items: CanonicalOrderItem[],
+  userId: string,
+  reservationValidationTime:
+    number
+): Promise<
+  | {
+      success: true;
+      mutations:
+        InventoryMutation[];
+    }
+  | {
+      success: false;
+      message: string;
+      productId: string;
+    }
+> {
+  const mutations:
+    InventoryMutation[] = [];
+
+  for (
+    const item of items
+  ) {
+    const product =
+      productsById.get(
+        item.id
+      );
+
+    if (!product) {
+      await rollbackInventory(
+        supabase,
+        mutations
+      );
+
+      return {
+        success: false,
+        message:
+          "A cart product could not be found.",
+        productId:
+          item.id,
+      };
+    }
+
+    const currentStock =
+      Math.max(
+        0,
+        Math.floor(
+          toNumber(
+            product.stock
+          )
+        )
+      );
+
+    const newStock =
+      Math.max(
+        0,
+        currentStock -
+          item.quantity
+      );
+
+    const updatePayload = {
+      stock:
+        newStock,
+      reserved_by:
+        null,
+      reserved_until:
+        null,
+      ...(newStock ===
+      0
+        ? {
+            active:
+              false,
+          }
+        : {}),
+    };
+
+    let updateQuery =
+      supabase
+        .from("products")
+        .update(
+          updatePayload
+        )
+        .eq(
+          "id",
+          item.id
+        )
+        .eq(
+          "stock",
+          currentStock
+        );
+
+    if (
+      product.reservation_enabled ===
+      true
+    ) {
+      updateQuery =
+        updateQuery
+          .eq(
+            "reserved_by",
+            userId
+          )
+          .gt(
+            "reserved_until",
+            new Date(
+              reservationValidationTime
+            ).toISOString()
+          );
+    }
+
+    const {
+      data,
+      error,
+    } = await updateQuery
+      .select(
+        "id"
+      )
+      .maybeSingle();
+
+    if (
+      error ||
+      !data
+    ) {
+      await rollbackInventory(
+        supabase,
+        mutations
+      );
+
+      return {
+        success: false,
+        message:
+          `${product.name} changed while your order was being placed. Please review your cart and try again.`,
+        productId:
+          product.id,
+      };
+    }
+
+    mutations.push({
+      productId:
+        product.id,
+      originalStock:
+        currentStock,
+      updatedStock:
+        newStock,
+      originalActive:
+        product.active,
+      originalReservedBy:
+        product.reserved_by,
+      originalReservedUntil:
+        product.reserved_until,
+    });
+  }
+
+  return {
+    success: true,
+    mutations,
+  };
+}
+
 export async function POST(
   request: NextRequest
 ) {
@@ -604,7 +1070,8 @@ export async function POST(
       data: {
         user,
       },
-      error: userError,
+      error:
+        userError,
     } =
       await authClient.auth.getUser();
 
@@ -625,8 +1092,22 @@ export async function POST(
     }
 
     const body =
-      (await request.json()) as
-        CheckoutRequest;
+      await readCheckoutRequest(
+        request
+      );
+
+    if (!body) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "The checkout request was invalid.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
 
     const customerName =
       getString(
@@ -685,7 +1166,9 @@ export async function POST(
 
     if (
       !customerName ||
-      !email ||
+      !EMAIL_PATTERN.test(
+        email
+      ) ||
       !phone ||
       !address ||
       !city ||
@@ -715,12 +1198,15 @@ export async function POST(
 
     const productIds =
       requestedItems.map(
-        (item) => item.id
+        (item) =>
+          item.id
       );
 
     const {
-      data: productData,
-      error: productError,
+      data:
+        productData,
+      error:
+        productError,
     } = await supabase
       .from("products")
       .select(
@@ -731,7 +1217,10 @@ export async function POST(
           price,
           image,
           stock,
-          active
+          active,
+          reservation_enabled,
+          reserved_by,
+          reserved_until
         `
       )
       .in(
@@ -744,8 +1233,10 @@ export async function POST(
     }
 
     const products =
-      (productData ??
-        []) as ProductRow[];
+      (
+        productData ??
+        []
+      ) as ProductRow[];
 
     if (
       products.length !==
@@ -764,7 +1255,10 @@ export async function POST(
     }
 
     const productsById =
-      new Map(
+      new Map<
+        string,
+        ProductRow
+      >(
         products.map(
           (product) => [
             product.id,
@@ -779,6 +1273,9 @@ export async function POST(
 
     let subtotal = 0;
     let totalItemQuantity = 0;
+
+    const reservationValidationTime =
+      Date.now();
 
     for (
       const requestedItem of
@@ -818,11 +1315,40 @@ export async function POST(
         );
       }
 
+      const reservationError =
+        getReservationError(
+          product,
+          requestedItem.quantity,
+          user.id,
+          reservationValidationTime
+        );
+
+      if (
+        reservationError
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              reservationError,
+            code:
+              "RESERVATION_INVALID",
+            product_id:
+              product.id,
+          },
+          {
+            status: 409,
+          }
+        );
+      }
+
       const stock =
         Math.max(
           0,
-          toNumber(
-            product.stock
+          Math.floor(
+            toNumber(
+              product.stock
+            )
           )
         );
 
@@ -837,7 +1363,7 @@ export async function POST(
               `${product.name} only has ${stock} remaining.`,
           },
           {
-            status: 400,
+            status: 409,
           }
         );
       }
@@ -860,14 +1386,18 @@ export async function POST(
         requestedItem.quantity;
 
       canonicalItems.push({
-        id: product.id,
-        slug: product.slug,
-        name: product.name,
+        id:
+          product.id,
+        slug:
+          product.slug,
+        name:
+          product.name,
         quantity:
           requestedItem.quantity,
         price,
         image:
-          product.image ?? "",
+          product.image ??
+          "",
       });
     }
 
@@ -886,7 +1416,9 @@ export async function POST(
           couponCode,
           subtotal
         );
-    } catch (couponError) {
+    } catch (
+      couponError: unknown
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -926,6 +1458,34 @@ export async function POST(
         )
       );
 
+    const inventoryResult =
+      await reserveInventoryForOrder(
+        supabase,
+        productsById,
+        canonicalItems,
+        user.id,
+        reservationValidationTime
+      );
+
+    if (
+      !inventoryResult.success
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            inventoryResult.message,
+          code:
+            "INVENTORY_CHANGED",
+          product_id:
+            inventoryResult.productId,
+        },
+        {
+          status: 409,
+        }
+      );
+    }
+
     const orderStatus =
       "Pending";
 
@@ -933,36 +1493,56 @@ export async function POST(
       "Pending";
 
     const {
-      data: order,
-      error: orderError,
+      data:
+        order,
+      error:
+        orderError,
     } = await supabase
       .from("orders")
       .insert({
-        user_id: user.id,
+        user_id:
+          user.id,
+
         customer_name:
           customerName,
+
         email,
+
         phone,
+
         address,
+
         city,
+
         state,
+
         postal_code:
           postalCode,
+
         country,
+
         payment_method:
           paymentMethod,
+
         subtotal,
+
         shipping,
+
         coupon_code:
           couponResult.code,
+
         discount_amount:
           couponResult
             .discountAmount,
+
         total,
+
         status:
           orderStatus,
+
         payment_status:
           paymentStatus,
+
         items:
           canonicalItems,
       })
@@ -973,11 +1553,17 @@ export async function POST(
       orderError ||
       !order
     ) {
+      await rollbackInventory(
+        supabase,
+        inventoryResult.mutations
+      );
+
       return NextResponse.json(
         {
           success: false,
           message:
-            orderError?.message ??
+            orderError
+              ?.message ??
             "Failed to create order.",
         },
         {
@@ -986,66 +1572,12 @@ export async function POST(
       );
     }
 
-    for (
-      const item of
-      canonicalItems
-    ) {
-      const product =
-        productsById.get(
-          item.id
-        );
-
-      if (!product) {
-        continue;
-      }
-
-      const currentStock =
-        Math.max(
-          0,
-          toNumber(
-            product.stock
-          )
-        );
-
-      const newStock =
-        Math.max(
-          0,
-          currentStock -
-            item.quantity
-        );
-
-      const {
-        error: stockError,
-      } = await supabase
-        .from("products")
-        .update({
-          stock:
-            newStock,
-          ...(newStock === 0
-            ? {
-                active:
-                  false,
-              }
-            : {}),
-        })
-        .eq(
-          "id",
-          item.id
-        );
-
-      if (stockError) {
-        console.error(
-          "Stock update error:",
-          stockError
-        );
-      }
-    }
-
     if (
       couponResult.coupon
     ) {
       const {
-        error: usageError,
+        error:
+          usageError,
       } = await supabase.rpc(
         "increment_coupon_usage",
         {
@@ -1058,7 +1590,15 @@ export async function POST(
       if (usageError) {
         console.error(
           "Coupon usage update error:",
-          usageError
+          {
+            orderId:
+              order.id,
+            couponId:
+              couponResult
+                .coupon.id,
+            error:
+              usageError,
+          }
         );
       }
     }
@@ -1067,49 +1607,78 @@ export async function POST(
       await resend.emails.send({
         from:
           EMAIL_FROM,
+
         to:
           email,
+
         subject:
           `Your Rooh & Rivet Order #${order.id} is Confirmed`,
+
         react:
           OrderConfirmation({
             customerName,
+
             orderId:
               String(
                 order.id
               ),
+
             subtotal,
+
             shipping,
+
             couponCode:
               couponResult.code,
+
             discountAmount:
               couponResult
                 .discountAmount,
+
             total,
+
             paymentMethod,
+
             paymentStatus,
+
             orderStatus,
           }),
       });
-    } catch (emailError) {
+    } catch (
+      emailError: unknown
+    ) {
       console.error(
-        "Email Error:",
-        emailError
+        "Order confirmation email error:",
+        {
+          orderId:
+            order.id,
+          email,
+          error:
+            emailError,
+        }
       );
     }
 
     return NextResponse.json(
       {
         success: true,
+
         order,
+
         pricing: {
+          currency:
+            "INR",
+
           subtotal,
+
           shipping,
+
           coupon_code:
             couponResult.code,
+
           discount_amount:
             couponResult
               .discountAmount,
+
           total,
         },
       },
@@ -1117,7 +1686,9 @@ export async function POST(
         status: 201,
       }
     );
-  } catch (error) {
+  } catch (
+    error: unknown
+  ) {
     console.error(
       "Checkout Error:",
       error
@@ -1126,6 +1697,7 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
+
         message:
           error instanceof
           Error

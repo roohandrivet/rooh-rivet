@@ -29,9 +29,6 @@ import {
 import {
   supabase,
 } from "@/lib/supabase";
-import {
-  useCurrency,
-} from "@/context/CurrencyContext";
 
 type NumericValue =
   | number
@@ -52,6 +49,7 @@ type Order = {
   user_id: string | null;
   total: NumericValue;
   subtotal: NumericValue;
+  shipping: NumericValue;
   discount_amount: NumericValue;
   coupon_code: string | null;
   status: string | null;
@@ -73,7 +71,6 @@ type StatusDetails = {
     size?: number;
     className?: string;
   }>;
-
   className: string;
 };
 
@@ -115,6 +112,50 @@ function toNumber(
   )
     ? parsed
     : 0;
+}
+
+function toSafeAmount(
+  value:
+    | number
+    | string
+    | null
+    | undefined
+): number {
+  return Math.max(
+    0,
+    toNumber(value)
+  );
+}
+
+function formatCurrency(
+  amount: number
+): string {
+  const safeAmount =
+    Number.isFinite(amount)
+      ? Math.max(0, amount)
+      : 0;
+
+  return new Intl.NumberFormat(
+    "en-IN",
+    {
+      style: "currency",
+      currency: "INR",
+      minimumFractionDigits:
+        Number.isInteger(
+          safeAmount
+        )
+          ? 0
+          : 2,
+      maximumFractionDigits: 2,
+    }
+  )
+    .format(
+      safeAmount
+    )
+    .replace(
+      /\u00a0/g,
+      " "
+    );
 }
 
 function parseOrderItems(
@@ -175,14 +216,11 @@ function parseOrderItems(
           );
 
         const price =
-          Math.max(
-            0,
-            toNumber(
-              rawItem.price as
-                | number
-                | string
-                | null
-            )
+          toSafeAmount(
+            rawItem.price as
+              | number
+              | string
+              | null
           );
 
         return {
@@ -258,16 +296,15 @@ function getStatusDetails(
       return {
         icon:
           CheckCircle2,
-
         className:
           "border-emerald-200 bg-emerald-50 text-emerald-700",
       };
 
     case "processing":
+    case "packaging":
       return {
         icon:
           Clock3,
-
         className:
           "border-purple-200 bg-purple-50 text-purple-700",
       };
@@ -276,7 +313,6 @@ function getStatusDetails(
       return {
         icon:
           Truck,
-
         className:
           "border-blue-200 bg-blue-50 text-blue-700",
       };
@@ -285,7 +321,6 @@ function getStatusDetails(
       return {
         icon:
           XCircle,
-
         className:
           "border-red-200 bg-red-50 text-red-700",
       };
@@ -294,7 +329,6 @@ function getStatusDetails(
       return {
         icon:
           Package,
-
         className:
           "border-amber-200 bg-amber-50 text-amber-700",
       };
@@ -327,10 +361,6 @@ export default function AccountOrdersPage() {
   const router =
     useRouter();
 
-  const {
-    formatPrice,
-  } = useCurrency();
-
   const [
     loading,
     setLoading,
@@ -360,7 +390,7 @@ export default function AccountOrdersPage() {
       async (
         showRefreshState =
           false
-      ) => {
+      ): Promise<void> => {
         if (
           showRefreshState
         ) {
@@ -406,6 +436,7 @@ export default function AccountOrdersPage() {
                 user_id,
                 total,
                 subtotal,
+                shipping,
                 discount_amount,
                 coupon_code,
                 status,
@@ -427,7 +458,9 @@ export default function AccountOrdersPage() {
               }
             );
 
-          if (ordersError) {
+          if (
+            ordersError
+          ) {
             throw ordersError;
           }
 
@@ -440,7 +473,6 @@ export default function AccountOrdersPage() {
                 order
               ): Order => ({
                 ...order,
-
                 items:
                   parseOrderItems(
                     order.items
@@ -452,7 +484,7 @@ export default function AccountOrdersPage() {
             parsedOrders
           );
         } catch (
-          loadError
+          loadError: unknown
         ) {
           console.error(
             "Failed to load orders:",
@@ -463,7 +495,7 @@ export default function AccountOrdersPage() {
 
           setError(
             loadError instanceof
-              Error
+            Error
               ? loadError.message
               : "Unable to load your orders."
           );
@@ -518,7 +550,7 @@ export default function AccountOrdersPage() {
 
             return (
               total +
-              toNumber(
+              toSafeAmount(
                 order.total
               )
             );
@@ -533,7 +565,7 @@ export default function AccountOrdersPage() {
             order
           ) =>
             total +
-            toNumber(
+            toSafeAmount(
               order.discount_amount
             ),
           0
@@ -553,8 +585,7 @@ export default function AccountOrdersPage() {
           <div className="mx-auto h-11 w-11 animate-spin rounded-full border-4 border-[#E8DDD3] border-t-[#5A2D2D]" />
 
           <p className="mt-5 text-lg text-[#8B6B5B]">
-            Loading your
-            orders...
+            Loading your orders...
           </p>
         </div>
       </main>
@@ -574,8 +605,7 @@ export default function AccountOrdersPage() {
                 size={18}
               />
 
-              Back to My
-              Account
+              Back to My Account
             </Link>
 
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#8B6B5B]">
@@ -587,11 +617,9 @@ export default function AccountOrdersPage() {
             </h1>
 
             <p className="mt-3 max-w-2xl leading-7 text-[#8B6B5B]">
-              Track your
-              purchases, payments,
-              shipping updates and
-              complete order
-              history.
+              Track purchases, payments, shipping updates and
+              complete order history. Completed order values are
+              shown exactly as stored in INR.
             </p>
           </div>
 
@@ -672,7 +700,7 @@ export default function AccountOrdersPage() {
             </p>
 
             <p className="mt-3 font-serif text-3xl text-[#4B2E2E] sm:text-4xl">
-              {formatPrice(
+              {formatCurrency(
                 statistics.totalValue
               )}
             </p>
@@ -681,7 +709,7 @@ export default function AccountOrdersPage() {
             0 ? (
               <p className="mt-2 text-sm text-emerald-700">
                 Saved{" "}
-                {formatPrice(
+                {formatCurrency(
                   statistics.totalSavings
                 )}{" "}
                 with coupons
@@ -717,9 +745,7 @@ export default function AccountOrdersPage() {
               </h2>
 
               <p className="mx-auto mt-4 max-w-lg leading-7 text-[#8B6B5B]">
-                Your handcrafted
-                jewellery journey
-                begins with your
+                Your handcrafted jewellery journey begins with your
                 first purchase.
               </p>
 
@@ -727,8 +753,7 @@ export default function AccountOrdersPage() {
                 href="/shop"
                 className="mt-8 inline-flex items-center gap-3 rounded-full bg-[#5A2D2D] px-8 py-4 font-semibold text-white transition hover:bg-[#472323]"
               >
-                Explore
-                Collection
+                Explore Collection
 
                 <ChevronRight
                   size={20}
@@ -764,37 +789,53 @@ export default function AccountOrdersPage() {
                   );
 
                 const discountAmount =
-                  toNumber(
+                  toSafeAmount(
                     order.discount_amount
                   );
 
+                const shipping =
+                  toSafeAmount(
+                    order.shipping
+                  );
+
                 const total =
-                  toNumber(
+                  toSafeAmount(
                     order.total
                   );
 
                 const subtotal =
                   order.subtotal ===
                   null
-                    ? total +
-                      discountAmount
-                    : toNumber(
+                    ? Math.max(
+                        0,
+                        total +
+                          discountAmount -
+                          shipping
+                      )
+                    : toSafeAmount(
                         order.subtotal
                       );
+
+                const couponCode =
+                  order.coupon_code
+                    ?.trim()
+                    .toUpperCase() ??
+                  "";
 
                 return (
                   <Link
                     key={
                       order.id
                     }
-                    href={`/account/orders/${order.id}`}
+                    href={`/account/orders/${encodeURIComponent(
+                      order.id
+                    )}`}
                     className="group block rounded-3xl border border-[#E8DDD3] bg-white p-6 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl sm:p-8"
                   >
                     <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8B6B5B]">
-                          Order
-                          Reference
+                          Order Reference
                         </p>
 
                         <h2 className="mt-2 font-serif text-2xl text-[#4B2E2E]">
@@ -814,9 +855,7 @@ export default function AccountOrdersPage() {
                         </p>
 
                         <p className="mt-2 text-sm text-[#8B6B5B]">
-                          {
-                            paymentMethod
-                          }
+                          {paymentMethod}
                         </p>
                       </div>
 
@@ -847,7 +886,7 @@ export default function AccountOrdersPage() {
                       </div>
                     </div>
 
-                    <div className="mt-7 grid gap-7 border-t border-[#ECE3DA] pt-7 lg:grid-cols-[minmax(0,1.5fr)_minmax(260px,1fr)]">
+                    <div className="mt-7 grid gap-7 border-t border-[#ECE3DA] pt-7 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,1fr)]">
                       <div>
                         <div className="flex items-center justify-between gap-4">
                           <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8B6B5B]">
@@ -897,7 +936,7 @@ export default function AccountOrdersPage() {
                                     </div>
 
                                     <p className="shrink-0 font-semibold text-[#4B2E2E]">
-                                      {formatPrice(
+                                      {formatCurrency(
                                         item.price *
                                           item.quantity
                                       )}
@@ -928,18 +967,21 @@ export default function AccountOrdersPage() {
                           </div>
                         ) : (
                           <p className="mt-5 text-sm text-[#8B6B5B]">
-                            No product
-                            details
-                            available.
+                            No product details available.
                           </p>
                         )}
                       </div>
 
                       <div className="rounded-2xl border border-[#E8DDD3] bg-[#FCFAF8] p-5">
-                        <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8B6B5B]">
-                          Payment
-                          Summary
-                        </p>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[#8B6B5B]">
+                            Payment Summary
+                          </p>
+
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#A08374]">
+                            INR
+                          </span>
+                        </div>
 
                         <div className="mt-5 space-y-3 text-sm">
                           <div className="flex justify-between gap-4 text-[#7A6464]">
@@ -948,13 +990,39 @@ export default function AccountOrdersPage() {
                             </span>
 
                             <span>
-                              {formatPrice(
+                              {formatCurrency(
                                 subtotal
                               )}
                             </span>
                           </div>
 
-                          {order.coupon_code &&
+                          <div className="flex justify-between gap-4 text-[#7A6464]">
+                            <span className="inline-flex items-center gap-1.5">
+                              <Truck
+                                size={14}
+                              />
+
+                              Shipping
+                            </span>
+
+                            <span
+                              className={
+                                shipping ===
+                                0
+                                  ? "font-semibold text-emerald-700"
+                                  : ""
+                              }
+                            >
+                              {shipping ===
+                              0
+                                ? "Free"
+                                : formatCurrency(
+                                    shipping
+                                  )}
+                            </span>
+                          </div>
+
+                          {couponCode &&
                           discountAmount >
                             0 ? (
                             <div className="flex justify-between gap-4 text-emerald-700">
@@ -964,13 +1032,13 @@ export default function AccountOrdersPage() {
                                 />
 
                                 {
-                                  order.coupon_code
+                                  couponCode
                                 }
                               </span>
 
                               <span>
                                 -
-                                {formatPrice(
+                                {formatCurrency(
                                   discountAmount
                                 )}
                               </span>
@@ -983,7 +1051,7 @@ export default function AccountOrdersPage() {
                             </span>
 
                             <span>
-                              {formatPrice(
+                              {formatCurrency(
                                 total
                               )}
                             </span>

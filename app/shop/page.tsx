@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { Search } from "lucide-react";
+import {
+  Clock3,
+  Gift,
+  Search,
+  Sparkles,
+  Truck,
+} from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import ProductGrid from "@/components/ProductGrid";
@@ -7,6 +13,21 @@ import ProductGrid from "@/components/ProductGrid";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
+
+type ProductRow = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  price: number | string | null;
+  image: string | null;
+  featured: boolean | null;
+  bestseller: boolean | null;
+  category: string | null;
+  stock: number | string | null;
+  reservation_enabled: boolean | null;
+  reserved_until: string | null;
+};
 
 type Product = {
   id: string;
@@ -16,12 +37,44 @@ type Product = {
   price: number;
   image: string;
   featured: boolean;
+  bestseller: boolean;
   category: string;
+  stock: number;
+  reservation_enabled: boolean;
+  reserved_until: string | null;
+  currently_reserved: boolean;
 };
 
+function toNumber(
+  value: number | string | null
+): number {
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed)
+    ? parsed
+    : 0;
+}
+
+function isCurrentlyReserved(
+  reservedUntil: string | null,
+  currentTime: number
+): boolean {
+  if (!reservedUntil) {
+    return false;
+  }
+
+  const expiresAt = new Date(
+    reservedUntil
+  ).getTime();
+
+  return (
+    !Number.isNaN(expiresAt) &&
+    expiresAt > currentTime
+  );
+}
+
 export default async function ShopPage() {
-  const supabase =
-    await createClient();
+  const supabase = await createClient();
 
   const {
     data,
@@ -37,7 +90,11 @@ export default async function ShopPage() {
         price,
         image,
         featured,
-        category
+        bestseller,
+        category,
+        stock,
+        reservation_enabled,
+        reserved_until
       `
     )
     .eq("active", true)
@@ -52,17 +109,55 @@ export default async function ShopPage() {
     );
   }
 
-  const products =
-    (data ?? []) as Product[];
+  const currentTime = Date.now();
+
+  const products: Product[] = (
+    (data ?? []) as ProductRow[]
+  ).map((product) => ({
+    id: product.id,
+    slug: product.slug,
+    name: product.name,
+    description:
+      product.description ?? "",
+    price: Math.max(
+      0,
+      toNumber(product.price)
+    ),
+    image: product.image ?? "",
+    featured:
+      product.featured === true,
+    bestseller:
+      product.bestseller === true,
+    category:
+      product.category ?? "",
+    stock: Math.max(
+      0,
+      Math.floor(
+        toNumber(product.stock)
+      )
+    ),
+    reservation_enabled:
+      product.reservation_enabled ===
+      true,
+    reserved_until:
+      product.reserved_until,
+    currently_reserved:
+      product.reservation_enabled ===
+        true &&
+      isCurrentlyReserved(
+        product.reserved_until,
+        currentTime
+      ),
+  }));
 
   return (
     <main className="min-h-screen bg-[#F8F4EF]">
-      <section className="px-8 py-24 text-center">
+      <section className="px-6 py-20 text-center sm:px-8 sm:py-24">
         <p className="text-sm uppercase tracking-[8px] text-[#8B6B5B]">
           Rooh &amp; Rivet
         </p>
 
-        <h1 className="mt-6 font-serif text-6xl text-[#4B2E2E]">
+        <h1 className="mt-6 font-serif text-5xl text-[#4B2E2E] sm:text-6xl">
           Our Collection
         </h1>
 
@@ -74,50 +169,66 @@ export default async function ShopPage() {
         </p>
       </section>
 
-      <section className="mx-auto max-w-7xl px-8">
-        <div className="flex items-center gap-4 rounded-full bg-white px-8 py-5 shadow-lg">
+      <section className="mx-auto max-w-7xl px-6 sm:px-8">
+        <div className="flex items-center gap-4 rounded-full bg-white px-6 py-5 shadow-lg sm:px-8">
           <Search
-            className="text-[#8B6B5B]"
+            className="shrink-0 text-[#8B6B5B]"
             size={22}
           />
 
           <input
-            type="text"
+            type="search"
             placeholder="Search jewellery..."
-            className="w-full bg-transparent text-[#4B2E2E] outline-none"
+            aria-label="Search jewellery"
+            className="w-full bg-transparent text-[#4B2E2E] outline-none placeholder:text-[#A79084]"
           />
         </div>
       </section>
 
-      <section className="mx-auto mt-12 max-w-7xl px-8">
+      <section className="mx-auto mt-12 max-w-7xl px-6 sm:px-8">
         <div className="flex flex-wrap justify-center gap-4">
-          <button className="rounded-full bg-[#5A2D2D] px-8 py-3 text-[#D8C4A8]">
+          <button
+            type="button"
+            className="rounded-full bg-[#5A2D2D] px-8 py-3 text-[#F1DECA]"
+          >
             All
           </button>
 
-          <button className="rounded-full bg-white px-8 py-3 text-[#D4B483] transition hover:bg-[#5A2D2D] hover:text-[#D8C4A8]">
-            Necklaces
-          </button>
-
-          <button className="rounded-full bg-white px-8 py-3 text-[#D4B483] transition hover:bg-[#5A2D2D] hover:text-[#D8C4A8]">
-            Earrings
-          </button>
-
-          <button className="rounded-full bg-white px-8 py-3 text-[#D4B483] transition hover:bg-[#5A2D2D] hover:text-[#D8C4A8]">
-            Bracelets
-          </button>
-
-          <button className="rounded-full bg-white px-8 py-3 text-[#D4B483] transition hover:bg-[#5A2D2D] hover:text-[#D8C4A8]">
-            Rings
-          </button>
+          {[
+            "Necklaces",
+            "Earrings",
+            "Bracelets",
+            "Rings",
+          ].map((category) => (
+            <button
+              key={category}
+              type="button"
+              className="rounded-full bg-white px-8 py-3 text-[#9A7048] transition hover:bg-[#5A2D2D] hover:text-[#F1DECA]"
+            >
+              {category}
+            </button>
+          ))}
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-8 py-20">
+      <section className="mx-auto max-w-7xl px-6 py-20 sm:px-8">
         {error ? (
           <div className="rounded-3xl border border-red-200 bg-red-50 px-6 py-10 text-center text-red-700">
             Products could not be loaded.
             Please refresh the page.
+          </div>
+        ) : products.length === 0 ? (
+          <div className="rounded-3xl border border-[#E8DDD3] bg-white px-6 py-14 text-center shadow-sm">
+            <h2 className="font-serif text-3xl text-[#4B2E2E]">
+              The collection is being
+              prepared
+            </h2>
+
+            <p className="mx-auto mt-4 max-w-xl leading-7 text-[#7A6464]">
+              New handcrafted pieces will
+              appear here as soon as they
+              become available.
+            </p>
           </div>
         ) : (
           <ProductGrid
@@ -127,13 +238,13 @@ export default async function ShopPage() {
       </section>
 
       <section className="bg-white py-24">
-        <div className="mx-auto max-w-7xl px-8">
+        <div className="mx-auto max-w-7xl px-6 sm:px-8">
           <div className="text-center">
             <p className="text-sm uppercase tracking-[8px] text-[#8B6B5B]">
               Why Shop With Us
             </p>
 
-            <h2 className="mt-6 font-serif text-5xl text-[#4B2E2E]">
+            <h2 className="mt-6 font-serif text-4xl text-[#4B2E2E] sm:text-5xl">
               Luxury In Every Detail
             </h2>
 
@@ -146,11 +257,12 @@ export default async function ShopPage() {
 
           <div className="mt-20 grid gap-10 md:grid-cols-3">
             <div className="rounded-3xl bg-[#F8F4EF] p-10 text-center shadow-lg">
-              <div className="mb-6 text-5xl">
-                ✨
-              </div>
+              <Sparkles
+                size={46}
+                className="mx-auto text-[#5A2D2D]"
+              />
 
-              <h3 className="font-serif text-3xl text-[#4B2E2E]">
+              <h3 className="mt-6 font-serif text-3xl text-[#4B2E2E]">
                 Premium Craftsmanship
               </h3>
 
@@ -162,27 +274,31 @@ export default async function ShopPage() {
             </div>
 
             <div className="rounded-3xl bg-[#F8F4EF] p-10 text-center shadow-lg">
-              <div className="mb-6 text-5xl">
-                🚚
-              </div>
+              <Truck
+                size={46}
+                className="mx-auto text-[#5A2D2D]"
+              />
 
-              <h3 className="font-serif text-3xl text-[#4B2E2E]">
-                Free Shipping
+              <h3 className="mt-6 font-serif text-3xl text-[#4B2E2E]">
+                Insured Shipping
               </h3>
 
               <p className="mt-6 leading-8 text-[#7A6464]">
-                Complimentary delivery
-                across India with secure
-                luxury packaging.
+                Every order is securely
+                packaged and tracked, with
+                complimentary shipping
+                across India on orders of
+                ₹999 or more.
               </p>
             </div>
 
             <div className="rounded-3xl bg-[#F8F4EF] p-10 text-center shadow-lg">
-              <div className="mb-6 text-5xl">
-                💝
-              </div>
+              <Gift
+                size={46}
+                className="mx-auto text-[#5A2D2D]"
+              />
 
-              <h3 className="font-serif text-3xl text-[#4B2E2E]">
+              <h3 className="mt-6 font-serif text-3xl text-[#4B2E2E]">
                 Perfect Gifts
               </h3>
 
@@ -197,42 +313,42 @@ export default async function ShopPage() {
       </section>
 
       <section className="py-24">
-        <div className="mx-auto max-w-5xl px-8">
-          <div className="rounded-[40px] bg-[#5A2D2D] p-16 text-center text-white">
-            <p className="text-sm uppercase tracking-[8px]">
-              Exclusive Access
+        <div className="mx-auto max-w-5xl px-6 sm:px-8">
+          <div className="rounded-[40px] bg-[#5A2D2D] p-10 text-center text-white sm:p-16">
+            <Clock3
+              size={42}
+              className="mx-auto text-[#E4C8AA]"
+            />
+
+            <p className="mt-6 text-sm uppercase tracking-[8px]">
+              One Of A Kind
             </p>
 
-            <h2 className="mt-6 font-serif text-5xl">
-              Join Our Community
+            <h2 className="mt-6 font-serif text-4xl sm:text-5xl">
+              Reserved Exclusively For You
             </h2>
 
             <p className="mx-auto mt-6 max-w-2xl leading-8 text-[#F5E7E0]">
-              Be the first to discover new
-              collections, exclusive
-              launches and members-only
-              offers.
+              Selected one-of-a-kind pieces
+              are held for 30 minutes after
+              they are added to a signed-in
+              customer&apos;s cart.
             </p>
 
-            <div className="mt-12 flex flex-col justify-center gap-4 md:flex-row">
-              <input
-                type="email"
-                placeholder="Enter your email"
-                className="w-full rounded-full bg-white px-8 py-5 text-[#4B2E2E] outline-none md:w-[420px]"
-              />
-
-              <button className="rounded-full bg-[#D9B38C] px-10 py-5 font-semibold text-[#4B2E2E] transition hover:bg-[#C79B73]">
-                Subscribe
-              </button>
-            </div>
+            <Link
+              href="/account"
+              className="mt-10 inline-flex rounded-full bg-[#D9B38C] px-10 py-4 font-semibold text-[#4B2E2E] transition hover:bg-[#C79B73]"
+            >
+              Visit Your Account
+            </Link>
           </div>
         </div>
       </section>
 
       <section className="pb-24">
-        <div className="mx-auto max-w-7xl px-8">
-          <div className="rounded-[40px] bg-gradient-to-r from-[#5A2D2D] to-[#7B4B4B] p-20 text-center text-white shadow-2xl">
-            <h2 className="font-serif text-5xl">
+        <div className="mx-auto max-w-7xl px-6 sm:px-8">
+          <div className="rounded-[40px] bg-gradient-to-r from-[#5A2D2D] to-[#7B4B4B] p-10 text-center text-white shadow-2xl sm:p-20">
+            <h2 className="font-serif text-4xl sm:text-5xl">
               Discover Jewellery That
               Lasts Forever
             </h2>

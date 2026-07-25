@@ -75,6 +75,39 @@ type OrderRow = {
     | null;
 };
 
+type TimelineStep = {
+  title: string;
+  description: string;
+};
+
+const TIMELINE_STEPS:
+  TimelineStep[] = [
+    {
+      title:
+        "Order Confirmed",
+      description:
+        "Your order has been successfully received.",
+    },
+    {
+      title:
+        "Packaging",
+      description:
+        "Your jewellery will be carefully quality checked and packaged before dispatch.",
+    },
+    {
+      title:
+        "Shipped",
+      description:
+        "You will receive shipping confirmation and tracking details.",
+    },
+    {
+      title:
+        "Delivered",
+      description:
+        "Your Rooh & Rivet jewellery will arrive at your delivery address.",
+    },
+  ];
+
 function toNumber(
   value:
     | number
@@ -92,21 +125,51 @@ function toNumber(
     : 0;
 }
 
+function toSafeAmount(
+  value:
+    | number
+    | string
+    | null
+    | undefined
+): number {
+  return Math.max(
+    0,
+    toNumber(value)
+  );
+}
+
 function formatCurrency(
   amount: number
 ): string {
+  const safeAmount =
+    Math.max(
+      0,
+      Number.isFinite(amount)
+        ? amount
+        : 0
+    );
+
   return new Intl.NumberFormat(
     "en-IN",
     {
       style: "currency",
       currency: "INR",
       minimumFractionDigits:
-        Number.isInteger(amount)
+        Number.isInteger(
+          safeAmount
+        )
           ? 0
           : 2,
       maximumFractionDigits: 2,
     }
-  ).format(amount);
+  )
+    .format(
+      safeAmount
+    )
+    .replace(
+      /\u00a0/g,
+      " "
+    );
 }
 
 function formatOrderDate(
@@ -183,6 +246,36 @@ function getStatusClasses(
   return "bg-amber-100 text-amber-700";
 }
 
+function getFirstQueryValue(
+  value:
+    | string
+    | string[]
+    | undefined
+): string {
+  if (
+    Array.isArray(value)
+  ) {
+    return value[0]?.trim() ?? "";
+  }
+
+  return value?.trim() ?? "";
+}
+
+function getSafeDisplayText(
+  value:
+    | string
+    | null
+    | undefined,
+  fallback: string
+): string {
+  const trimmedValue =
+    value?.trim();
+
+  return trimmedValue
+    ? trimmedValue
+    : fallback;
+}
+
 export default async function OrderSuccessPage({
   searchParams,
 }: OrderSuccessPageProps) {
@@ -190,11 +283,14 @@ export default async function OrderSuccessPage({
     await searchParams;
 
   const orderId =
-    Array.isArray(params.id)
-      ? params.id[0]
-      : params.id;
+    getFirstQueryValue(
+      params.id
+    );
 
-  if (!orderId) {
+  if (
+    !orderId ||
+    orderId.length > 200
+  ) {
     redirect(
       "/account/orders"
     );
@@ -207,10 +303,15 @@ export default async function OrderSuccessPage({
     data: {
       user,
     },
+    error:
+      userError,
   } =
     await supabase.auth.getUser();
 
-  if (!user) {
+  if (
+    userError ||
+    !user
+  ) {
     redirect(
       `/auth/login?redirect=${encodeURIComponent(
         `/order-success?id=${orderId}`
@@ -267,11 +368,9 @@ export default async function OrderSuccessPage({
           </h1>
 
           <p className="mt-5 leading-7 text-[#7A6464]">
-            We could not load this
-            order. It may not belong
-            to the signed-in account,
-            or the order reference may
-            be incorrect.
+            We could not load this order. It may not belong to the
+            signed-in account, or the order reference may be
+            incorrect.
           </p>
 
           <Link
@@ -293,57 +392,58 @@ export default async function OrderSuccessPage({
     data as OrderRow;
 
   const subtotal =
-    Math.max(
-      0,
-      toNumber(
-        order.subtotal
-      )
+    toSafeAmount(
+      order.subtotal
     );
 
   const shipping =
-    Math.max(
-      0,
-      toNumber(
-        order.shipping
-      )
+    toSafeAmount(
+      order.shipping
     );
 
   const discountAmount =
-    Math.max(
-      0,
-      toNumber(
-        order.discount_amount
-      )
+    toSafeAmount(
+      order.discount_amount
     );
 
   const total =
-    Math.max(
-      0,
-      toNumber(
-        order.total
-      )
+    toSafeAmount(
+      order.total
     );
 
   const customerName =
-    order.customer_name?.trim() ||
-    user.user_metadata
-      ?.full_name ||
-    user.email?.split(
-      "@"
-    )[0] ||
-    "Valued Customer";
+    getSafeDisplayText(
+      order.customer_name,
+      getSafeDisplayText(
+        typeof user.user_metadata
+          ?.full_name ===
+          "string"
+          ? user.user_metadata
+              .full_name
+          : null,
+        user.email
+          ?.split("@")[0] ??
+          "Valued Customer"
+      )
+    );
 
   const orderStatus =
-    order.status?.trim() ||
-    "Pending";
+    getSafeDisplayText(
+      order.status,
+      "Pending"
+    );
 
   const paymentStatus =
-    order.payment_status?.trim() ||
-    "Pending";
+    getSafeDisplayText(
+      order.payment_status,
+      "Pending"
+    );
 
   const paymentMethod =
-    order.payment_method?.trim() ||
-    "Not specified";
+    getSafeDisplayText(
+      order.payment_method,
+      "Not specified"
+    );
 
   const orderDate =
     formatOrderDate(
@@ -351,18 +451,26 @@ export default async function OrderSuccessPage({
     );
 
   const confirmationEmail =
-    order.email?.trim() ||
-    user.email ||
-    "Not available";
+    getSafeDisplayText(
+      order.email,
+      user.email ??
+        "Not available"
+    );
+
+  const couponCode =
+    order.coupon_code
+      ?.trim()
+      .toUpperCase() ??
+    "";
 
   const hasCoupon =
     Boolean(
-      order.coupon_code?.trim()
+      couponCode
     ) &&
     discountAmount > 0;
 
   return (
-    <main className="min-h-screen bg-[#F8F4EF] px-6 py-16 sm:px-8 sm:py-20">
+    <main className="min-h-screen bg-[#F8F4EF] px-5 py-16 sm:px-8 sm:py-20">
       <div className="mx-auto w-full max-w-5xl rounded-[40px] border border-[#E8DDD3] bg-white p-7 text-center shadow-2xl sm:p-12">
         <div className="flex justify-center">
           <div className="flex h-24 w-24 items-center justify-center rounded-full bg-emerald-100 sm:h-28 sm:w-28">
@@ -382,16 +490,13 @@ export default async function OrderSuccessPage({
         </h1>
 
         <p className="mt-5 text-lg text-[#4B2E2E] sm:text-xl">
-          {customerName}, your order
-          has been received.
+          {customerName}, your order has been received.
         </p>
 
         <p className="mx-auto mt-7 max-w-3xl text-base leading-8 text-[#7A6464] sm:text-lg">
-          Thank you for choosing Rooh
-          &amp; Rivet. Your jewellery
-          will be prepared with
-          exceptional care and
-          attention before dispatch.
+          Thank you for choosing Rooh &amp; Rivet. Your jewellery
+          will be prepared with exceptional care and attention
+          before dispatch.
         </p>
 
         <section className="mt-10 rounded-3xl border border-[#E8DDD3] bg-[#FCFAF8] p-6 text-left sm:p-8">
@@ -467,9 +572,15 @@ export default async function OrderSuccessPage({
           </div>
 
           <div className="mt-6 rounded-2xl bg-white p-5 sm:p-6">
-            <h2 className="font-serif text-2xl text-[#4B2E2E]">
-              Payment Summary
-            </h2>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <h2 className="font-serif text-2xl text-[#4B2E2E]">
+                Payment Summary
+              </h2>
+
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#8B6B5B]">
+                Stored in INR
+              </p>
+            </div>
 
             <div className="mt-6 space-y-4">
               <div className="flex items-center justify-between gap-4 text-[#7A6464]">
@@ -516,7 +627,7 @@ export default async function OrderSuccessPage({
                     />
 
                     Coupon{" "}
-                    {order.coupon_code}
+                    {couponCode}
                   </span>
 
                   <span>
@@ -549,15 +660,12 @@ export default async function OrderSuccessPage({
           </p>
 
           <h2 className="mt-4 font-serif text-2xl text-[#4B2E2E] sm:text-3xl">
-            We&apos;ll begin preparing
-            your order.
+            We&apos;ll begin preparing your order.
           </h2>
 
           <p className="mt-5 leading-8 text-[#7A6464]">
-            A confirmation email will
-            be sent shortly. You will
-            also receive shipping and
-            delivery updates as your
+            A confirmation email will be sent shortly. You will
+            also receive shipping and delivery updates as your
             order progresses.
           </p>
         </div>
@@ -571,8 +679,7 @@ export default async function OrderSuccessPage({
             </h3>
 
             <p className="mt-3 leading-7 text-[#7A6464]">
-              Your order is being
-              reviewed and prepared.
+              Your order is being reviewed and prepared.
             </p>
           </div>
 
@@ -584,9 +691,8 @@ export default async function OrderSuccessPage({
             </h3>
 
             <p className="mt-3 leading-7 text-[#7A6464]">
-              Premium signature
-              packaging is included
-              with every order.
+              Premium signature packaging is included with every
+              order.
             </p>
           </div>
 
@@ -598,8 +704,7 @@ export default async function OrderSuccessPage({
             </h3>
 
             <p className="mt-3 leading-7 text-[#7A6464]">
-              Track your order from
-              your account at any time.
+              Track your order from your account at any time.
             </p>
           </div>
         </div>
@@ -610,32 +715,7 @@ export default async function OrderSuccessPage({
           </h3>
 
           <div className="mx-auto mt-8 max-w-2xl space-y-7">
-            {[
-              {
-                title:
-                  "Order Confirmed",
-                description:
-                  "Your order has been successfully received.",
-              },
-              {
-                title:
-                  "Packaging",
-                description:
-                  "Your jewellery will be carefully quality checked and packaged before dispatch.",
-              },
-              {
-                title:
-                  "Shipped",
-                description:
-                  "You will receive shipping confirmation and tracking details.",
-              },
-              {
-                title:
-                  "Delivered",
-                description:
-                  "Your Rooh & Rivet jewellery will arrive at your delivery address.",
-              },
-            ].map(
+            {TIMELINE_STEPS.map(
               (step) => (
                 <div
                   key={
@@ -692,10 +772,8 @@ export default async function OrderSuccessPage({
         </div>
 
         <p className="mt-10 text-sm leading-7 text-[#8B6B5B]">
-          Need help with your order?
-          Our team is always happy to
-          assist you through the
-          contact page.
+          Need help with your order? Our team is always happy to
+          assist you through the contact page.
         </p>
       </div>
     </main>

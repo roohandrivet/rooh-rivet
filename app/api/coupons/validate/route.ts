@@ -6,6 +6,8 @@ import {
   createClient,
 } from "@supabase/supabase-js";
 
+export const runtime = "nodejs";
+
 type RequestedItem = {
   id: string;
   quantity: number;
@@ -18,9 +20,18 @@ type ValidateCouponBody = {
 
 type ProductRow = {
   id: string;
-  price: number | string | null;
-  stock: number | string | null;
-  active: boolean | null;
+  name: string;
+  price:
+    | number
+    | string
+    | null;
+  stock:
+    | number
+    | string
+    | null;
+  active:
+    | boolean
+    | null;
 };
 
 type CouponRow = {
@@ -36,7 +47,9 @@ type CouponRow = {
     | number
     | string
     | null;
-  expiry_date: string | null;
+  expiry_date:
+    | string
+    | null;
   maximum_uses:
     | number
     | string
@@ -47,6 +60,12 @@ type CouponRow = {
     | null;
   active: boolean;
 };
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const MAX_DISTINCT_ITEMS = 50;
+const MAX_ITEM_QUANTITY = 100;
 
 function getSupabaseAdmin() {
   const supabaseUrl =
@@ -78,6 +97,29 @@ function getSupabaseAdmin() {
   );
 }
 
+function isRecord(
+  value: unknown
+): value is Record<
+  string,
+  unknown
+> {
+  return (
+    typeof value ===
+      "object" &&
+    value !== null &&
+    !Array.isArray(value)
+  );
+}
+
+function getString(
+  value: unknown
+): string {
+  return typeof value ===
+    "string"
+    ? value.trim()
+    : "";
+}
+
 function toNumber(
   value:
     | number
@@ -85,9 +127,12 @@ function toNumber(
     | null
     | undefined
 ): number {
-  const parsed = Number(value);
+  const parsed =
+    Number(value);
 
-  return Number.isFinite(parsed)
+  return Number.isFinite(
+    parsed
+  )
     ? parsed
     : 0;
 }
@@ -97,70 +142,116 @@ function roundCurrency(
 ): number {
   return (
     Math.round(
-      (value +
-        Number.EPSILON) *
-        100
+      (
+        value +
+        Number.EPSILON
+      ) * 100
     ) / 100
   );
 }
 
-function isRecord(
-  value: unknown
-): value is Record<
-  string,
-  unknown
+async function readRequestBody(
+  request: NextRequest
+): Promise<
+  ValidateCouponBody | null
 > {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value)
-  );
+  try {
+    const body =
+      (await request.json()) as
+        unknown;
+
+    if (
+      !isRecord(body)
+    ) {
+      return null;
+    }
+
+    return body;
+  } catch {
+    return null;
+  }
 }
 
 function parseItems(
   value: unknown
 ): RequestedItem[] {
-  if (!Array.isArray(value)) {
+  if (
+    !Array.isArray(value)
+  ) {
     return [];
   }
 
   const quantities =
-    new Map<string, number>();
+    new Map<
+      string,
+      number
+    >();
 
-  value.forEach((entry) => {
-    if (!isRecord(entry)) {
-      return;
+  for (
+    const entry of value
+  ) {
+    if (
+      !isRecord(entry)
+    ) {
+      continue;
     }
 
     const id =
-      typeof entry.id === "string"
-        ? entry.id.trim()
-        : "";
+      getString(
+        entry.id
+      );
 
     const quantity =
-      Number(entry.quantity);
+      Number(
+        entry.quantity
+      );
 
     if (
       !id ||
+      !UUID_PATTERN.test(id) ||
       !Number.isInteger(
         quantity
       ) ||
-      quantity <= 0
+      quantity <= 0 ||
+      quantity >
+        MAX_ITEM_QUANTITY
     ) {
-      return;
+      continue;
+    }
+
+    const nextQuantity =
+      (
+        quantities.get(id) ??
+        0
+      ) + quantity;
+
+    if (
+      nextQuantity >
+      MAX_ITEM_QUANTITY
+    ) {
+      continue;
     }
 
     quantities.set(
       id,
-      (quantities.get(id) ??
-        0) + quantity
+      nextQuantity
     );
-  });
+
+    if (
+      quantities.size >
+      MAX_DISTINCT_ITEMS
+    ) {
+      return [];
+    }
+  }
 
   return Array.from(
     quantities.entries()
   ).map(
-    ([id, quantity]) => ({
+    ([
+      id,
+      quantity,
+    ]) => ({
       id,
       quantity,
     })
@@ -168,15 +259,23 @@ function parseItems(
 }
 
 function isCouponExpired(
-  expiryDate: string | null
+  expiryDate:
+    | string
+    | null
 ): boolean {
   if (!expiryDate) {
     return false;
   }
 
+  const dateOnly =
+    expiryDate.slice(
+      0,
+      10
+    );
+
   const expiresAt =
     new Date(
-      `${expiryDate}T23:59:59.999Z`
+      `${dateOnly}T23:59:59.999Z`
     );
 
   if (
@@ -217,7 +316,10 @@ function calculateDiscount(
 
     return roundCurrency(
       subtotal *
-        (percentage / 100)
+        (
+          percentage /
+          100
+        )
     );
   }
 
@@ -234,19 +336,32 @@ export async function POST(
 ) {
   try {
     const body =
-      (await request.json()) as
-        ValidateCouponBody;
+      await readRequestBody(
+        request
+      );
+
+    if (!body) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "The coupon validation request was invalid.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
 
     const code =
-      typeof body.code ===
-      "string"
-        ? body.code
-            .trim()
-            .toUpperCase()
-        : "";
+      getString(
+        body.code
+      ).toUpperCase();
 
     const items =
-      parseItems(body.items);
+      parseItems(
+        body.items
+      );
 
     if (!code) {
       return NextResponse.json(
@@ -262,13 +377,14 @@ export async function POST(
     }
 
     if (
-      items.length === 0
+      items.length ===
+      0
     ) {
       return NextResponse.json(
         {
           success: false,
           message:
-            "Your cart is empty.",
+            "Your cart is empty or contains invalid items.",
         },
         {
           status: 400,
@@ -281,31 +397,40 @@ export async function POST(
 
     const productIds =
       items.map(
-        (item) => item.id
+        (item) =>
+          item.id
       );
 
     const {
-      data: productData,
-      error: productError,
+      data:
+        productData,
+      error:
+        productError,
     } = await supabase
       .from("products")
       .select(
         `
           id,
+          name,
           price,
           stock,
           active
         `
       )
-      .in("id", productIds);
+      .in(
+        "id",
+        productIds
+      );
 
     if (productError) {
       throw productError;
     }
 
     const products =
-      (productData ??
-        []) as ProductRow[];
+      (
+        productData ??
+        []
+      ) as ProductRow[];
 
     if (
       products.length !==
@@ -324,7 +449,10 @@ export async function POST(
     }
 
     const productsById =
-      new Map(
+      new Map<
+        string,
+        ProductRow
+      >(
         products.map(
           (product) => [
             product.id,
@@ -343,16 +471,28 @@ export async function POST(
           item.id
         );
 
+      if (!product) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              "A cart product could not be found.",
+          },
+          {
+            status: 400,
+          }
+        );
+      }
+
       if (
-        !product ||
         product.active ===
-          false
+        false
       ) {
         return NextResponse.json(
           {
             success: false,
             message:
-              "One or more cart products are unavailable.",
+              `${product.name} is currently unavailable.`,
           },
           {
             status: 400,
@@ -363,8 +503,10 @@ export async function POST(
       const stock =
         Math.max(
           0,
-          toNumber(
-            product.stock
+          Math.floor(
+            toNumber(
+              product.stock
+            )
           )
         );
 
@@ -376,18 +518,27 @@ export async function POST(
           {
             success: false,
             message:
-              "One or more cart quantities exceed available stock.",
+              `${product.name} only has ${stock} remaining.`,
           },
           {
-            status: 400,
+            status: 409,
           }
         );
       }
 
+      const price =
+        roundCurrency(
+          Math.max(
+            0,
+            toNumber(
+              product.price
+            )
+          )
+        );
+
       subtotal +=
-        toNumber(
-          product.price
-        ) * item.quantity;
+        price *
+        item.quantity;
     }
 
     subtotal =
@@ -396,8 +547,10 @@ export async function POST(
       );
 
     const {
-      data: couponData,
-      error: couponError,
+      data:
+        couponData,
+      error:
+        couponError,
     } = await supabase
       .from("coupons")
       .select(
@@ -413,7 +566,10 @@ export async function POST(
           active
         `
       )
-      .eq("code", code)
+      .eq(
+        "code",
+        code
+      )
       .maybeSingle();
 
     if (couponError) {
@@ -462,13 +618,23 @@ export async function POST(
       coupon.maximum_uses ===
       null
         ? null
-        : toNumber(
-            coupon.maximum_uses
+        : Math.max(
+            0,
+            Math.floor(
+              toNumber(
+                coupon.maximum_uses
+              )
+            )
           );
 
     const usageCount =
-      toNumber(
-        coupon.usage_count
+      Math.max(
+        0,
+        Math.floor(
+          toNumber(
+            coupon.usage_count
+          )
+        )
       );
 
     if (
@@ -492,8 +658,11 @@ export async function POST(
       coupon.minimum_order ===
       null
         ? 0
-        : toNumber(
-            coupon.minimum_order
+        : Math.max(
+            0,
+            toNumber(
+              coupon.minimum_order
+            )
           );
 
     if (
@@ -529,33 +698,46 @@ export async function POST(
         )
       );
 
-    return NextResponse.json({
-      success: true,
+    return NextResponse.json(
+      {
+        success: true,
 
-      message:
-        `${coupon.code} applied successfully.`,
+        message:
+          `${coupon.code} applied successfully.`,
 
-      coupon: {
-        code:
-          coupon.code,
+        currency:
+          "INR",
 
-        discount_type:
-          coupon.discount_type,
+        coupon: {
+          code:
+            coupon.code,
 
-        discount_value:
-          toNumber(
-            coupon.discount_value
-          ),
+          discount_type:
+            coupon.discount_type,
+
+          discount_value:
+            Math.max(
+              0,
+              toNumber(
+                coupon.discount_value
+              )
+            ),
+        },
+
+        subtotal,
+
+        discount_amount:
+          discountAmount,
+
+        total,
       },
-
-      subtotal,
-
-      discount_amount:
-        discountAmount,
-
-      total,
-    });
-  } catch (error) {
+      {
+        status: 200,
+      }
+    );
+  } catch (
+    error: unknown
+  ) {
     console.error(
       "Coupon validation error:",
       error
@@ -564,8 +746,12 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
+
         message:
-          "Unable to validate the coupon.",
+          error instanceof
+          Error
+            ? error.message
+            : "Unable to validate the coupon.",
       },
       {
         status: 500,

@@ -48,6 +48,19 @@ interface Product {
   featured: boolean | null;
   active: boolean;
   bestseller: boolean | null;
+  reservation_enabled:
+    | boolean
+    | null;
+  reserved_until:
+    | string
+    | null;
+}
+
+interface ProductMetadataRow {
+  name: string;
+  description: string | null;
+  image: string | null;
+  active: boolean;
 }
 
 interface PageProps {
@@ -67,7 +80,8 @@ export async function generateMetadata({
     await createClient();
 
   const {
-    data: product,
+    data,
+    error,
   } = await supabase
     .from("products")
     .select(
@@ -78,11 +92,20 @@ export async function generateMetadata({
         active
       `
     )
-    .eq("slug", slug)
-    .eq("active", true)
+    .eq(
+      "slug",
+      slug
+    )
+    .eq(
+      "active",
+      true
+    )
     .maybeSingle();
 
-  if (!product) {
+  if (
+    error ||
+    !data
+  ) {
     return {
       title:
         "Product | Rooh & Rivet",
@@ -91,25 +114,36 @@ export async function generateMetadata({
     };
   }
 
+  const product =
+    data as ProductMetadataRow;
+
   const description =
     product.description ??
     "Luxury handcrafted jewellery by Rooh & Rivet.";
 
   return {
-    title: `${product.name} | Rooh & Rivet`,
+    title:
+      `${product.name} | Rooh & Rivet`,
+
     description,
 
     openGraph: {
-      title: `${product.name} | Rooh & Rivet`,
+      title:
+        `${product.name} | Rooh & Rivet`,
+
       description,
-      images: product.image
-        ? [
-            {
-              url: product.image,
-              alt: product.name,
-            },
-          ]
-        : undefined,
+
+      images:
+        product.image
+          ? [
+              {
+                url:
+                  product.image,
+                alt:
+                  product.name,
+              },
+            ]
+          : undefined,
     },
   };
 }
@@ -125,7 +159,7 @@ export default async function ProductPage({
     await createClient();
 
   const {
-    data: product,
+    data,
     error,
   } = await supabase
     .from("products")
@@ -144,16 +178,24 @@ export default async function ProductPage({
         stock,
         featured,
         active,
-        bestseller
+        bestseller,
+        reservation_enabled,
+        reserved_until
       `
     )
-    .eq("slug", slug)
-    .eq("active", true)
+    .eq(
+      "slug",
+      slug
+    )
+    .eq(
+      "active",
+      true
+    )
     .maybeSingle();
 
   if (
     error ||
-    !product
+    !data
   ) {
     if (error) {
       console.error(
@@ -165,47 +207,70 @@ export default async function ProductPage({
     notFound();
   }
 
-  const productData =
-    product as Product;
+  const product =
+    data as Product;
 
   return (
     <main className="min-h-screen bg-[#F8F4EF]">
       <ProductSchema
-        name={productData.name}
+        name={
+          product.name
+        }
         description={
-          productData.description
+          product.description
         }
-        image={productData.image}
-        price={productData.price}
-        slug={productData.slug}
+        image={
+          product.image
+        }
+        price={
+          product.price
+        }
+        slug={
+          product.slug
+        }
         category={
-          productData.category
+          product.category
         }
-        stock={productData.stock}
+        stock={
+          product.stock
+        }
       />
 
       <ProductAnalytics
-        id={productData.id}
-        name={productData.name}
-        price={productData.price}
+        id={
+          product.id
+        }
+        name={
+          product.name
+        }
+        price={
+          product.price
+        }
       />
 
       <div className="mx-auto max-w-7xl px-6 py-12">
         <Link
           href="/shop"
-          className="mb-8 inline-flex items-center gap-2 text-[#5A2D2D] hover:underline"
+          className="mb-8 inline-flex items-center gap-2 text-[#5A2D2D] transition hover:text-[#4B2E2E] hover:underline"
         >
-          <ArrowLeft size={18} />
+          <ArrowLeft
+            size={18}
+          />
+
           Back to Shop
         </Link>
 
         <div className="grid gap-12 lg:grid-cols-2 lg:items-start">
           <ProductGallery
-            product={productData}
+            product={
+              product
+            }
           />
 
           <ProductInfo
-            product={productData}
+            product={
+              product
+            }
           />
         </div>
 
@@ -218,14 +283,17 @@ export default async function ProductPage({
               />
 
               <h3 className="font-serif text-2xl text-[#4B2E2E]">
-                Free Shipping
+                Insured Shipping
               </h3>
 
               <p className="mt-3 leading-7 text-stone-600">
-                Complimentary insured
-                shipping across India with
-                premium Rooh &amp; Rivet
-                packaging.
+                Every order is
+                carefully packaged and
+                dispatched with secure
+                tracking. Complimentary
+                shipping is available
+                within India on orders
+                of ₹999 or more.
               </p>
             </div>
 
@@ -240,10 +308,12 @@ export default async function ProductPage({
               </h3>
 
               <p className="mt-3 leading-7 text-stone-600">
-                Every jewellery piece is
-                carefully inspected before
-                dispatch to ensure
-                exceptional craftsmanship.
+                Every jewellery piece
+                is carefully inspected
+                before dispatch to
+                ensure exceptional
+                craftsmanship and
+                quality.
               </p>
             </div>
 
@@ -258,10 +328,13 @@ export default async function ProductPage({
               </h3>
 
               <p className="mt-3 leading-7 text-stone-600">
-                Eligible products can be
-                returned or exchanged
-                within the applicable
-                return window.
+                Eligible products can
+                be returned or
+                exchanged within the
+                applicable return
+                window when unworn and
+                in their original
+                packaging.
               </p>
             </div>
           </div>
@@ -270,7 +343,7 @@ export default async function ProductPage({
         <section className="mt-20">
           <ProductReviews
             productId={
-              productData.id
+              product.id
             }
           />
         </section>
@@ -278,25 +351,28 @@ export default async function ProductPage({
         <section className="mt-20 rounded-[40px] bg-white p-10 shadow-sm">
           <div className="max-w-3xl">
             <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[#8B6B5B]">
-              Rooh &amp; Rivet Promise
+              Rooh &amp; Rivet
+              Promise
             </p>
 
             <h2 className="mt-4 font-serif text-4xl text-[#4B2E2E]">
-              Crafted to be treasured for
-              years.
+              Crafted to be
+              treasured for years.
             </h2>
 
             <p className="mt-6 leading-8 text-stone-600">
               Every Rooh &amp; Rivet
               creation is thoughtfully
               designed using premium
-              materials and handcrafted by
-              skilled artisans. From
-              elegant everyday essentials
-              to statement jewellery, each
-              piece is made to celebrate
-              timeless beauty and become
-              part of your story.
+              materials and
+              handcrafted by skilled
+              artisans. From elegant
+              everyday essentials to
+              statement jewellery,
+              each piece is made to
+              celebrate timeless
+              beauty and become part
+              of your story.
             </p>
           </div>
         </section>
@@ -304,10 +380,10 @@ export default async function ProductPage({
         <section className="mt-20">
           <ProductRecommendations
             productId={
-              productData.id
+              product.id
             }
             category={
-              productData.category
+              product.category
             }
           />
         </section>

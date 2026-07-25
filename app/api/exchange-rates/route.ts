@@ -1,17 +1,12 @@
-import { unstable_cache } from "next/cache";
+import { NextResponse } from "next/server";
 
-export type CurrencyCode =
+type CurrencyCode =
   | "INR"
   | "USD"
   | "EUR"
   | "GBP"
   | "AUD"
   | "CAD";
-
-export type ExchangeRates = Record<
-  CurrencyCode,
-  number
->;
 
 type FrankfurterRate = {
   date: string;
@@ -20,8 +15,9 @@ type FrankfurterRate = {
   rate: number;
 };
 
-const BASE_CURRENCY: CurrencyCode =
-  "INR";
+type ExchangeRates = Record<CurrencyCode, number>;
+
+const BASE_CURRENCY: CurrencyCode = "INR";
 
 const TARGET_CURRENCIES: Exclude<
   CurrencyCode,
@@ -34,8 +30,7 @@ const TARGET_CURRENCIES: Exclude<
   "CAD",
 ];
 
-const CACHE_SECONDS =
-  60 * 60 * 6;
+const CACHE_SECONDS = 60 * 60 * 6;
 
 const FALLBACK_RATES: ExchangeRates = {
   INR: 1,
@@ -46,18 +41,7 @@ const FALLBACK_RATES: ExchangeRates = {
   CAD: 0.016,
 };
 
-function isCurrencyCode(
-  value: string
-): value is CurrencyCode {
-  return (
-    value === "INR" ||
-    value === "USD" ||
-    value === "EUR" ||
-    value === "GBP" ||
-    value === "AUD" ||
-    value === "CAD"
-  );
-}
+export const revalidate = 21600;
 
 function isFrankfurterRate(
   value: unknown
@@ -82,7 +66,7 @@ function isFrankfurterRate(
   );
 }
 
-function buildRates(
+function createRates(
   rows: FrankfurterRate[]
 ): ExchangeRates {
   const rates: ExchangeRates = {
@@ -95,20 +79,30 @@ function buildRates(
       row.quote.toUpperCase();
 
     if (
-      isCurrencyCode(quote) &&
-      quote !== BASE_CURRENCY
+      TARGET_CURRENCIES.includes(
+        quote as Exclude<
+          CurrencyCode,
+          "INR"
+        >
+      )
     ) {
-      rates[quote] =
-        row.rate;
+      rates[
+        quote as Exclude<
+          CurrencyCode,
+          "INR"
+        >
+      ] = row.rate;
     }
   }
 
   return rates;
 }
 
-async function fetchExchangeRates():
-  Promise<ExchangeRates> {
+export async function GET() {
   try {
+    const targetCurrencies =
+      TARGET_CURRENCIES.join(",");
+
     const url =
       new URL(
         "https://api.frankfurter.dev/v2/rates"
@@ -121,7 +115,7 @@ async function fetchExchangeRates():
 
     url.searchParams.set(
       "quotes",
-      TARGET_CURRENCIES.join(",")
+      targetCurrencies
     );
 
     const response =
@@ -164,83 +158,67 @@ async function fetchExchangeRates():
       rows.length === 0
     ) {
       throw new Error(
-        "No live exchange rates were returned."
+        "No exchange rates were returned."
       );
     }
 
-    return buildRates(rows);
+    const rates =
+      createRates(rows);
+
+    const latestDate =
+      rows
+        .map(
+          (row) => row.date
+        )
+        .sort()
+        .at(-1) ??
+      new Date().toISOString();
+
+    return NextResponse.json(
+      {
+        success: true,
+        base:
+          BASE_CURRENCY,
+        rates,
+        updatedAt:
+          latestDate,
+        source:
+          "Frankfurter",
+      },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control":
+            `public, s-maxage=${CACHE_SECONDS}, stale-while-revalidate=${CACHE_SECONDS}`,
+        },
+      }
+    );
   } catch (error) {
     console.error(
-      "Failed to load live exchange rates:",
+      "Exchange-rate route error:",
       error
     );
 
-    return FALLBACK_RATES;
-  }
-}
-
-export const getExchangeRates =
-  unstable_cache(
-    fetchExchangeRates,
-    [
-      "rooh-rivet-exchange-rates-inr",
-    ],
-    {
-      revalidate:
-        CACHE_SECONDS,
-    }
-  );
-
-export async function getExchangeRate(
-  currency: string
-): Promise<number> {
-  const normalisedCurrency =
-    currency
-      .trim()
-      .toUpperCase();
-
-  if (
-    !isCurrencyCode(
-      normalisedCurrency
-    )
-  ) {
-    return 1;
-  }
-
-  const rates =
-    await getExchangeRates();
-
-  return (
-    rates[
-      normalisedCurrency
-    ] ?? 1
-  );
-}
-
-export async function convertCurrency(
-  amount: number,
-  targetCurrency: string
-): Promise<number> {
-  const numericAmount =
-    Number(amount);
-
-  if (
-    !Number.isFinite(
-      numericAmount
-    )
-  ) {
-    return 0;
-  }
-
-  const rate =
-    await getExchangeRate(
-      targetCurrency
+    return NextResponse.json(
+      {
+        success: false,
+        base:
+          BASE_CURRENCY,
+        rates:
+          FALLBACK_RATES,
+        updatedAt: null,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unable to load exchange rates.",
+      },
+      {
+        status: 503,
+        headers: {
+          "Cache-Control":
+            "no-store",
+        },
+      }
     );
-
-  return Number(
-    (
-      numericAmount *
-      rate
-    ).toFixed(2)
-  );
+  }
 }

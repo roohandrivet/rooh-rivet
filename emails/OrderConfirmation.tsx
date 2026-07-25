@@ -25,21 +25,61 @@ export type OrderConfirmationEmailProps = {
   orderStatus?: string;
 };
 
+function toSafeAmount(
+  value: number | undefined
+): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value)
+  ) {
+    return 0;
+  }
+
+  return Math.max(
+    0,
+    value
+  );
+}
+
 function formatCurrency(
   amount: number
 ): string {
+  const safeAmount =
+    toSafeAmount(amount);
+
   return new Intl.NumberFormat(
     "en-IN",
     {
       style: "currency",
       currency: "INR",
       minimumFractionDigits:
-        Number.isInteger(amount)
+        Number.isInteger(
+          safeAmount
+        )
           ? 0
           : 2,
       maximumFractionDigits: 2,
     }
-  ).format(amount);
+  )
+    .format(
+      safeAmount
+    )
+    .replace(
+      /\u00a0/g,
+      " "
+    );
+}
+
+function normaliseText(
+  value: string | undefined,
+  fallback: string
+): string {
+  const trimmedValue =
+    value?.trim();
+
+  return trimmedValue
+    ? trimmedValue
+    : fallback;
 }
 
 export default function OrderConfirmation({
@@ -55,30 +95,26 @@ export default function OrderConfirmation({
   orderStatus = "Pending",
 }: OrderConfirmationEmailProps) {
   const safeTotal =
-    Number.isFinite(total)
-      ? Math.max(0, total)
-      : 0;
+    toSafeAmount(total);
 
   const safeShipping =
-    Number.isFinite(shipping)
-      ? Math.max(0, shipping)
-      : 0;
+    toSafeAmount(shipping);
 
   const safeDiscount =
-    Number.isFinite(
+    toSafeAmount(
       discountAmount
-    )
-      ? Math.max(
-          0,
-          discountAmount
-        )
-      : 0;
+    );
 
   const safeSubtotal =
     typeof subtotal ===
       "number" &&
-    Number.isFinite(subtotal)
-      ? Math.max(0, subtotal)
+    Number.isFinite(
+      subtotal
+    )
+      ? Math.max(
+          0,
+          subtotal
+        )
       : Math.max(
           0,
           safeTotal +
@@ -86,15 +122,61 @@ export default function OrderConfirmation({
             safeShipping
         );
 
+  const safeCustomerName =
+    normaliseText(
+      customerName,
+      "Customer"
+    );
+
+  const safeOrderId =
+    normaliseText(
+      orderId,
+      "Order"
+    );
+
+  const safePaymentMethod =
+    normaliseText(
+      paymentMethod,
+      "Not specified"
+    );
+
+  const safePaymentStatus =
+    normaliseText(
+      paymentStatus,
+      "Pending"
+    );
+
+  const safeOrderStatus =
+    normaliseText(
+      orderStatus,
+      "Pending"
+    );
+
+  const normalisedCouponCode =
+    couponCode
+      ?.trim()
+      .toUpperCase() ??
+    "";
+
   const hasCoupon =
     Boolean(
-      couponCode?.trim()
+      normalisedCouponCode
     ) &&
     safeDiscount > 0;
 
+  const siteUrl =
+    (
+      process.env
+        .NEXT_PUBLIC_SITE_URL ??
+      "https://roohandrivet.com"
+    ).replace(
+      /\/+$/,
+      ""
+    );
+
   const orderUrl =
-    `https://roohandrivet.com/account/orders/${encodeURIComponent(
-      orderId
+    `${siteUrl}/account/orders/${encodeURIComponent(
+      safeOrderId
     )}`;
 
   return (
@@ -103,7 +185,10 @@ export default function OrderConfirmation({
 
       <Preview>
         Your Rooh &amp; Rivet order
-        #{orderId} has been confirmed.
+        {" "}
+        #{safeOrderId}
+        {" "}
+        has been confirmed.
       </Preview>
 
       <Body
@@ -232,7 +317,7 @@ export default function OrderConfirmation({
                   "0 0 16px",
               }}
             >
-              Hi {customerName},
+              Hi {safeCustomerName},
             </Text>
 
             <Text
@@ -301,7 +386,7 @@ export default function OrderConfirmation({
                     "break-all",
                 }}
               >
-                #{orderId}
+                #{safeOrderId}
               </Text>
 
               <Hr
@@ -327,8 +412,9 @@ export default function OrderConfirmation({
               >
                 <strong>
                   Order Status:
-                </strong>{" "}
-                {orderStatus}
+                </strong>
+                {" "}
+                {safeOrderStatus}
               </Text>
 
               <Text
@@ -345,8 +431,9 @@ export default function OrderConfirmation({
               >
                 <strong>
                   Payment Method:
-                </strong>{" "}
-                {paymentMethod}
+                </strong>
+                {" "}
+                {safePaymentMethod}
               </Text>
 
               <Text
@@ -362,8 +449,9 @@ export default function OrderConfirmation({
               >
                 <strong>
                   Payment Status:
-                </strong>{" "}
-                {paymentStatus}
+                </strong>
+                {" "}
+                {safePaymentStatus}
               </Text>
             </Section>
 
@@ -440,16 +528,19 @@ export default function OrderConfirmation({
                     float:
                       "right",
                     color:
-                      safeShipping === 0
+                      safeShipping ===
+                      0
                         ? "#16794C"
                         : "#4B2E2E",
                     fontWeight:
-                      safeShipping === 0
+                      safeShipping ===
+                      0
                         ? 600
                         : 400,
                   }}
                 >
-                  {safeShipping === 0
+                  {safeShipping ===
+                  0
                     ? "Free"
                     : formatCurrency(
                         safeShipping
@@ -469,8 +560,9 @@ export default function OrderConfirmation({
                     margin: 0,
                   }}
                 >
-                  Coupon{" "}
-                  {couponCode}
+                  Coupon
+                  {" "}
+                  {normalisedCouponCode}
                   <span
                     style={{
                       float:
@@ -518,6 +610,23 @@ export default function OrderConfirmation({
                     safeTotal
                   )}
                 </span>
+              </Text>
+
+              <Text
+                style={{
+                  color:
+                    "#8B6B5B",
+                  fontSize:
+                    "12px",
+                  lineHeight:
+                    "20px",
+                  margin:
+                    "14px 0 0",
+                  textAlign:
+                    "right",
+                }}
+              >
+                All amounts are in INR.
               </Text>
             </Section>
 
@@ -697,8 +806,10 @@ export default function OrderConfirmation({
                   "12px 0 0",
               }}
             >
-              ©{" "}
-              {new Date().getFullYear()}{" "}
+              ©
+              {" "}
+              {new Date().getFullYear()}
+              {" "}
               Rooh &amp; Rivet. All
               rights reserved.
             </Text>

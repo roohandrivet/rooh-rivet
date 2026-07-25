@@ -85,9 +85,9 @@ const TIMELINE_STEPS:
       icon: ReceiptText,
     },
     {
-      title: "Processing",
+      title: "Packaging",
       description:
-        "Your jewellery is being carefully prepared and checked.",
+        "Your jewellery is being carefully quality checked and packaged before dispatch.",
       icon: Package,
     },
     {
@@ -221,17 +221,29 @@ function parseOrderItems(
 function formatCurrency(
   value: unknown
 ): string {
+  const amount =
+    Math.max(
+      0,
+      toNumber(value)
+    );
+
   return new Intl.NumberFormat(
     "en-IN",
     {
       style: "currency",
       currency: "INR",
-      minimumFractionDigits: 0,
+      minimumFractionDigits:
+        Number.isInteger(amount)
+          ? 0
+          : 2,
       maximumFractionDigits: 2,
     }
-  ).format(
-    toNumber(value)
-  );
+  )
+    .format(amount)
+    .replace(
+      /\u00a0/g,
+      " "
+    );
 }
 
 function formatDate(
@@ -307,6 +319,7 @@ function getOrderStatusClasses(
       return "border-blue-200 bg-blue-50 text-blue-700";
 
     case "processing":
+    case "packaging":
       return "border-purple-200 bg-purple-50 text-purple-700";
 
     case "cancelled":
@@ -354,6 +367,7 @@ function getTimelineIndex(
       return 2;
 
     case "processing":
+    case "packaging":
       return 1;
 
     default:
@@ -1177,7 +1191,9 @@ export default function OrderDetailsPage() {
                   </div>
                 ) : (
                   <Link
-                    href={`/account/orders/${order.id}/review`}
+                    href={`/account/orders/${encodeURIComponent(
+                      order.id
+                    )}/review`}
                     className="mt-7 inline-flex rounded-full bg-[#5A2D2D] px-7 py-3.5 font-medium text-white transition hover:bg-[#472323]"
                   >
                     Leave a Review

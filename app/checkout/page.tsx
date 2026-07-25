@@ -9,8 +9,12 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  AlertCircle,
   ArrowLeft,
   Check,
+  Clock3,
+  Loader2,
+  ShieldCheck,
   Tag,
   X,
 } from "lucide-react";
@@ -78,6 +82,8 @@ type AppliedCoupon = {
 type CheckoutResponse = {
   success: boolean;
   message?: string;
+  code?: string;
+  product_id?: string;
   order?: {
     id: string | number;
   };
@@ -138,12 +144,36 @@ function roundCurrency(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+function formatRemainingTime(
+  totalSeconds: number
+): string {
+  const safeSeconds = Math.max(
+    0,
+    Math.floor(totalSeconds)
+  );
+
+  const minutes = Math.floor(
+    safeSeconds / 60
+  );
+
+  const seconds = safeSeconds % 60;
+
+  return `${minutes}:${seconds
+    .toString()
+    .padStart(2, "0")}`;
+}
+
 export default function CheckoutPage() {
   const router = useRouter();
 
   const {
     cart,
     clearCart,
+    hydrated,
+    reservationError,
+    clearReservationError,
+    getReservationRemainingSeconds,
+    isReservationExpired,
   } = useCart();
 
   const {
@@ -164,6 +194,11 @@ export default function CheckoutPage() {
     loading,
     setLoading,
   ] = useState(false);
+
+  const [
+    checkoutError,
+    setCheckoutError,
+  ] = useState("");
 
   const [
     applyingCoupon,
@@ -335,6 +370,21 @@ export default function CheckoutPage() {
       shippingSettings
         .internationalDiscountThreshold &&
     shipping > 0;
+
+  const invalidReservedItem = cart.find(
+    (item) =>
+      item.reservationEnabled === true &&
+      (
+        !item.reservedUntil ||
+        isReservationExpired(item.id) ||
+        getReservationRemainingSeconds(
+          item.id
+        ) <= 0
+      )
+  );
+
+  const hasInvalidReservation =
+    Boolean(invalidReservedItem);
 
   useEffect(() => {
     void checkLogin();
@@ -516,6 +566,9 @@ export default function CheckoutPage() {
         [field]: value,
       })
     );
+
+    setCheckoutError("");
+    clearReservationError();
   }
 
   function getRequestItems():
@@ -631,14 +684,43 @@ export default function CheckoutPage() {
   ) {
     event.preventDefault();
 
+    setCheckoutError("");
+    clearReservationError();
+
     if (cart.length === 0) {
-      alert("Your cart is empty.");
+      setCheckoutError(
+        "Your cart is empty."
+      );
+
+      return;
+    }
+
+    const expiredReservation =
+      cart.find(
+        (item) =>
+          item.reservationEnabled ===
+            true &&
+          (
+            !item.reservedUntil ||
+            isReservationExpired(
+              item.id
+            ) ||
+            getReservationRemainingSeconds(
+              item.id
+            ) <= 0
+          )
+      );
+
+    if (expiredReservation) {
+      setCheckoutError(
+        `${expiredReservation.name} is no longer reserved. Return to the product page and reserve it again before placing your order.`
+      );
 
       return;
     }
 
     if (loadingShippingSettings) {
-      alert(
+      setCheckoutError(
         "Shipping rates are still loading."
       );
 
@@ -652,9 +734,13 @@ export default function CheckoutPage() {
         data: {
           user,
         },
+        error: userError,
       } = await supabase.auth.getUser();
 
-      if (!user) {
+      if (
+        userError ||
+        !user
+      ) {
         router.replace(
           "/auth/login?redirect=/checkout"
         );
@@ -667,14 +753,20 @@ export default function CheckoutPage() {
       } =
         await supabase.auth.updateUser({
           data: {
-            full_name: form.fullName,
-            phone: form.phone,
-            address: form.address,
-            city: form.city,
-            state: form.state,
+            full_name:
+              form.fullName.trim(),
+            phone:
+              form.phone.trim(),
+            address:
+              form.address.trim(),
+            city:
+              form.city.trim(),
+            state:
+              form.state.trim(),
             postal_code:
-              form.postalCode,
-            country: form.country,
+              form.postalCode.trim(),
+            country:
+              form.country.trim(),
           },
         });
 
@@ -691,18 +783,25 @@ export default function CheckoutPage() {
         email: form.email
           .trim()
           .toLowerCase(),
-        phone: form.phone.trim(),
-        address: form.address.trim(),
-        city: form.city.trim(),
-        state: form.state.trim(),
+        phone:
+          form.phone.trim(),
+        address:
+          form.address.trim(),
+        city:
+          form.city.trim(),
+        state:
+          form.state.trim(),
         postal_code:
           form.postalCode.trim(),
-        country: form.country.trim(),
+        country:
+          form.country.trim(),
         payment_method:
           form.paymentMethod,
         coupon_code:
-          appliedCoupon?.code ?? null,
-        items: getRequestItems(),
+          appliedCoupon?.code ??
+          null,
+        items:
+          getRequestItems(),
       };
 
       const response = await fetch(
@@ -713,22 +812,46 @@ export default function CheckoutPage() {
             "Content-Type":
               "application/json",
           },
-          body: JSON.stringify(payload),
+          body:
+            JSON.stringify(
+              payload
+            ),
         }
       );
 
       const result =
-        (await response.json()) as
-          CheckoutResponse;
+        (await response
+          .json()
+          .catch(
+            () => ({
+              success: false,
+              message:
+                "The checkout service returned an invalid response.",
+            })
+          )) as CheckoutResponse;
 
       if (
         !response.ok ||
         !result.success ||
         !result.order
       ) {
-        throw new Error(
+        const message =
           result.message ??
-            "Failed to place order."
+          "Failed to place order.";
+
+        if (
+          result.code ===
+          "RESERVATION_INVALID"
+        ) {
+          setCheckoutError(
+            message
+          );
+
+          return;
+        }
+
+        throw new Error(
+          message
         );
       }
 
@@ -743,10 +866,10 @@ export default function CheckoutPage() {
         error
       );
 
-      alert(
+      setCheckoutError(
         error instanceof Error
           ? error.message
-          : "Something went wrong."
+          : "Something went wrong while placing your order."
       );
     } finally {
       setLoading(false);
@@ -754,14 +877,22 @@ export default function CheckoutPage() {
   }
 
   if (
+    !hydrated ||
     checkingAuth ||
     loadingShippingSettings
   ) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#F8F4EF]">
-        <p className="text-[#5A2D2D]">
-          Preparing checkout...
-        </p>
+        <div className="text-center">
+          <Loader2
+            size={38}
+            className="mx-auto animate-spin text-[#5A2D2D]"
+          />
+
+          <p className="mt-4 text-[#5A2D2D]">
+            Preparing checkout...
+          </p>
+        </div>
       </main>
     );
   }
@@ -784,6 +915,32 @@ export default function CheckoutPage() {
         {shippingSettingsError ? (
           <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
             {shippingSettingsError}
+          </div>
+        ) : null}
+
+        {reservationError ? (
+          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
+            <AlertCircle
+              size={20}
+              className="mt-0.5 shrink-0"
+            />
+
+            <p>
+              {reservationError}
+            </p>
+          </div>
+        ) : null}
+
+        {checkoutError ? (
+          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+            <AlertCircle
+              size={20}
+              className="mt-0.5 shrink-0"
+            />
+
+            <p>
+              {checkoutError}
+            </p>
           </div>
         ) : null}
 
@@ -984,26 +1141,70 @@ export default function CheckoutPage() {
                   Your cart is empty.
                 </p>
               ) : (
-                cart.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex justify-between gap-4 text-sm text-[#4B2E2E]"
-                  >
-                    <span className="leading-6">
-                      {item.name} ×{" "}
-                      {item.quantity}
-                    </span>
+                cart.map((item) => {
+                  const isReserved =
+                    item.reservationEnabled ===
+                    true;
 
-                    <span className="shrink-0 font-medium">
-                      {formatPrice(
-                        Number(item.price) *
-                          Number(
-                            item.quantity
-                          )
-                      )}
-                    </span>
-                  </div>
-                ))
+                  const remainingSeconds =
+                    isReserved
+                      ? getReservationRemainingSeconds(
+                          item.id
+                        )
+                      : 0;
+
+                  const expired =
+                    isReserved &&
+                    isReservationExpired(
+                      item.id
+                    );
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="rounded-2xl border border-[#EEE4DC] bg-[#FCFAF7] p-4"
+                    >
+                      <div className="flex justify-between gap-4 text-sm text-[#4B2E2E]">
+                        <span className="leading-6">
+                          {item.name} ×{" "}
+                          {item.quantity}
+                        </span>
+
+                        <span className="shrink-0 font-medium">
+                          {formatPrice(
+                            Number(
+                              item.price
+                            ) *
+                              Number(
+                                item.quantity
+                              )
+                          )}
+                        </span>
+                      </div>
+
+                      {isReserved ? (
+                        <div
+                          className={`mt-3 flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold ${
+                            expired
+                              ? "bg-red-50 text-red-700"
+                              : "bg-[#F3E8E0] text-[#5A2D2D]"
+                          }`}
+                        >
+                          <Clock3
+                            size={15}
+                            className="shrink-0"
+                          />
+
+                          {expired
+                            ? "Reservation expired"
+                            : `Reserved · ${formatRemainingTime(
+                                remainingSeconds
+                              )} remaining`}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
               )}
 
               <div className="border-t border-[#E8DDD3] pt-5">
@@ -1186,14 +1387,50 @@ export default function CheckoutPage() {
                   loading ||
                   applyingCoupon ||
                   loadingShippingSettings ||
-                  cart.length === 0
+                  cart.length === 0 ||
+                  hasInvalidReservation
                 }
-                className="mt-8 w-full rounded-xl bg-[#5A2D2D] px-6 py-4 text-lg font-semibold text-white transition hover:bg-[#4B2E2E] disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-[#5A2D2D] px-6 py-4 text-lg font-semibold text-white transition hover:bg-[#4B2E2E] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading
-                  ? "Placing Order..."
-                  : "Place Order"}
+                {loading ? (
+                  <>
+                    <Loader2
+                      size={20}
+                      className="animate-spin"
+                    />
+
+                    Placing Order...
+                  </>
+                ) : hasInvalidReservation ? (
+                  <>
+                    <AlertCircle
+                      size={20}
+                    />
+
+                    Reservation Expired
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck
+                      size={20}
+                    />
+
+                    Place Order
+                  </>
+                )}
               </button>
+
+              {cart.some(
+                (item) =>
+                  item.reservationEnabled ===
+                  true
+              ) ? (
+                <p className="mt-4 text-center text-sm leading-6 text-[#5A2D2D]">
+                  Reserved pieces must be
+                  purchased before their
+                  countdown expires.
+                </p>
+              ) : null}
 
               <p className="mt-4 text-center text-sm leading-6 text-[#8B6B5B]">
                 By placing your order you agree
