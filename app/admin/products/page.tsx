@@ -1105,7 +1105,7 @@ export default function AdminProductsPage() {
 
                       <div className="flex flex-col gap-3 sm:flex-row xl:w-40 xl:flex-col">
                         <Link
-                          href={`/admin/products/${product.id}/edit`}
+                          href={`/admin/products/edit/${product.id}`}
                           className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#5A2D2D] px-5 py-3 text-center font-medium text-[#5A2D2D] transition hover:bg-[#5A2D2D] hover:text-white"
                         >
                           <Edit3
