@@ -353,6 +353,15 @@ export default function ProductInfo({
                   complete checkout.
                 </p>
 
+                <p className="mt-3 text-sm font-medium leading-6 text-[#5A2D2D]">
+                  Still browsing? Add
+                  this piece to your
+                  wishlist instead and
+                  reserve it only when
+                  you are ready to
+                  complete checkout.
+                </p>
+
                 {hasActiveReservation ? (
                   <p className="mt-3 font-semibold text-[#5A2D2D]">
                     Reserved in your
