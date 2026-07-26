@@ -14,50 +14,22 @@ type ContactSocialContent = {
   instagram_url: string | null;
 };
 
-const DEFAULT_INSTAGRAM_URL =
-  "https://www.instagram.com/roohandrivet/";
-
 const galleryImages = [
-  {
-    id: 1,
-    image: "/instagram/1.jpg",
-    alt: "Luxury Necklace",
-  },
-  {
-    id: 2,
-    image: "/instagram/2.jpg",
-    alt: "Pearl Jewellery",
-  },
-  {
-    id: 3,
-    image: "/instagram/3.jpg",
-    alt: "Gold Earrings",
-  },
-  {
-    id: 4,
-    image: "/instagram/4.jpg",
-    alt: "Bridal Collection",
-  },
-  {
-    id: 5,
-    image: "/instagram/5.jpg",
-    alt: "Luxury Ring",
-  },
-  {
-    id: 6,
-    image: "/instagram/6.jpg",
-    alt: "Handcrafted Jewellery",
-  },
+  { id: 1, image: "/instagram/1.jpg", alt: "Luxury Necklace" },
+  { id: 2, image: "/instagram/2.jpg", alt: "Pearl Jewellery" },
+  { id: 3, image: "/instagram/3.jpg", alt: "Gold Earrings" },
+  { id: 4, image: "/instagram/4.jpg", alt: "Bridal Collection" },
+  { id: 5, image: "/instagram/5.jpg", alt: "Luxury Ring" },
+  { id: 6, image: "/instagram/6.jpg", alt: "Handcrafted Jewellery" },
 ];
 
 function normaliseInstagramUrl(
   value: string | null | undefined
 ): string {
-  const trimmed =
-    value?.trim();
+  const trimmed = value?.trim();
 
   if (!trimmed) {
-    return DEFAULT_INSTAGRAM_URL;
+    return "";
   }
 
   if (
@@ -68,16 +40,14 @@ function normaliseInstagramUrl(
   }
 
   if (trimmed.startsWith("@")) {
-    return `https://www.instagram.com/${trimmed.slice(
-      1
-    )}/`;
+    const username = trimmed.slice(1).trim();
+
+    return username
+      ? `https://www.instagram.com/${username}/`
+      : "";
   }
 
-  if (
-    trimmed.includes(
-      "instagram.com"
-    )
-  ) {
+  if (trimmed.includes("instagram.com")) {
     return `https://${trimmed}`;
   }
 
@@ -90,9 +60,12 @@ function normaliseInstagramUrl(
 function getInstagramHandle(
   instagramUrl: string
 ): string {
+  if (!instagramUrl) {
+    return "Instagram";
+  }
+
   try {
-    const url =
-      new URL(instagramUrl);
+    const url = new URL(instagramUrl);
 
     const username =
       url.pathname
@@ -101,40 +74,33 @@ function getInstagramHandle(
 
     return username
       ? `@${username}`
-      : "@roohandrivet";
+      : "Instagram";
   } catch {
-    return "@roohandrivet";
+    return "Instagram";
   }
 }
 
 export default function InstagramGallery() {
-  const [
-    instagramUrl,
-    setInstagramUrl,
-  ] = useState(
-    DEFAULT_INSTAGRAM_URL
-  );
+  const [instagramUrl, setInstagramUrl] =
+    useState("");
 
   useEffect(() => {
     let active = true;
 
     async function loadInstagramUrl():
       Promise<void> {
-      const {
-        data,
-        error,
-      } = await supabase
-        .from("site_content")
-        .select("instagram_url")
-        .eq("page", "contact")
-        .maybeSingle();
+      const { data, error } =
+        await supabase
+          .from("site_content")
+          .select("instagram_url")
+          .eq("page", "contact")
+          .maybeSingle();
 
       if (error) {
         console.error(
           "Failed to load Instagram URL:",
           error
         );
-
         return;
       }
 
@@ -168,6 +134,9 @@ export default function InstagramGallery() {
       [instagramUrl]
     );
 
+  const hasInstagramUrl =
+    instagramUrl.length > 0;
+
   return (
     <section className="bg-white py-24">
       <div className="mx-auto max-w-7xl px-8">
@@ -176,15 +145,21 @@ export default function InstagramGallery() {
             Follow Our Journey
           </p>
 
-          <a
-            href={instagramUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Visit ${instagramHandle} on Instagram`}
-            className="mt-6 inline-block font-serif text-5xl text-[#4B2E2E] transition hover:text-[#5A2D2D]"
-          >
-            {instagramHandle}
-          </a>
+          {hasInstagramUrl ? (
+            <a
+              href={instagramUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Visit ${instagramHandle} on Instagram`}
+              className="mt-6 inline-block font-serif text-5xl text-[#4B2E2E] transition hover:text-[#5A2D2D]"
+            >
+              {instagramHandle}
+            </a>
+          ) : (
+            <h2 className="mt-6 font-serif text-5xl text-[#4B2E2E]">
+              Instagram
+            </h2>
+          )}
 
           <p className="mt-6 leading-8 text-[#7A6464]">
             A glimpse into the world of Rooh & Rivet—
@@ -194,16 +169,9 @@ export default function InstagramGallery() {
         </div>
 
         <div className="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {galleryImages.map(
-            (item) => (
-              <a
-                key={item.id}
-                href={instagramUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`View ${instagramHandle} on Instagram`}
-                className="group relative overflow-hidden rounded-[32px]"
-              >
+          {galleryImages.map((item) => {
+            const card = (
+              <>
                 <div className="relative aspect-square overflow-hidden bg-[#F8F4EF]">
                   <Image
                     src={item.image}
@@ -231,25 +199,54 @@ export default function InstagramGallery() {
                   </p>
 
                   <p className="mt-2 text-sm text-white/80">
-                    Tap to visit our Instagram
+                    {hasInstagramUrl
+                      ? "Tap to visit our Instagram"
+                      : "Instagram profile not configured"}
                   </p>
                 </div>
+              </>
+            );
+
+            return hasInstagramUrl ? (
+              <a
+                key={item.id}
+                href={instagramUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Visit ${instagramHandle} on Instagram`}
+                className="group relative overflow-hidden rounded-[32px]"
+              >
+                {card}
               </a>
-            )
-          )}
+            ) : (
+              <div
+                key={item.id}
+                className="group relative overflow-hidden rounded-[32px]"
+              >
+                {card}
+              </div>
+            );
+          })}
         </div>
 
         <div className="mt-16 text-center">
-          <a
-            href={instagramUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Follow ${instagramHandle} on Instagram`}
-            className="inline-flex items-center gap-3 rounded-full bg-[#5A2D2D] px-10 py-5 font-medium text-white transition duration-300 hover:scale-105 hover:bg-[#472323]"
-          >
-            <FaInstagram size={22} />
-            Follow {instagramHandle}
-          </a>
+          {hasInstagramUrl ? (
+            <a
+              href={instagramUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Follow ${instagramHandle} on Instagram`}
+              className="inline-flex items-center gap-3 rounded-full bg-[#5A2D2D] px-10 py-5 font-medium text-white transition duration-300 hover:scale-105 hover:bg-[#472323]"
+            >
+              <FaInstagram size={22} />
+              Follow {instagramHandle}
+            </a>
+          ) : (
+            <p className="inline-flex items-center gap-3 rounded-full border border-[#DCCEC4] bg-[#F8F4EF] px-8 py-4 font-medium text-[#7A6464]">
+              <FaInstagram size={22} />
+              Instagram profile not configured
+            </p>
+          )}
 
           <p className="mx-auto mt-6 max-w-2xl text-[#8B6B5B]">
             Follow us for exclusive jewellery launches,
