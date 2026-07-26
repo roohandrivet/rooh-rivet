@@ -286,7 +286,7 @@ export default function AdminLowStock() {
 
                     <div className="min-w-0">
                       <Link
-                        href={`/admin/products/${product.id}`}
+                        href={`/admin/products/edit/${product.id}`}
                         className="block truncate font-semibold text-[#5A2D2D] transition hover:underline"
                       >
                         {product.name}
@@ -317,7 +317,7 @@ export default function AdminLowStock() {
                     </span>
 
                     <Link
-                      href={`/admin/products/${product.id}`}
+                      href={`/admin/products/edit/${product.id}`}
                       className="rounded-xl border border-[#DCCEC4] px-4 py-2 text-sm font-semibold text-[#5A2D2D] transition hover:bg-[#F8F4EF]"
                     >
                       Update
