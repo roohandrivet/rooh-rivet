@@ -23,7 +23,6 @@ import ProductRecommendations from "@/components/ProductRecommendations";
 
 import ProductGallery from "./components/ProductGallery";
 import ProductInfo from "./components/ProductInfo";
-import ProductReviews from "./components/ProductReviews";
 
 export const dynamic =
   "force-dynamic";
@@ -338,14 +337,6 @@ export default async function ProductPage({
               </p>
             </div>
           </div>
-        </section>
-
-        <section className="mt-20">
-          <ProductReviews
-            productId={
-              product.id
-            }
-          />
         </section>
 
         <section className="mt-20 rounded-[40px] bg-white p-10 shadow-sm">

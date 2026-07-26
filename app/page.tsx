@@ -5,6 +5,8 @@ import FeaturedProducts from "@/components/FeaturedProducts";
 import FeaturedReviews from "@/components/FeaturedReviews";
 import InstagramGallery from "@/components/InstagramGallery";
 
+export const revalidate = 300;
+
 export default function HomePage() {
   return (
     <main className="bg-[#F8F4EF]">

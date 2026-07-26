@@ -1,352 +1,514 @@
-"use client";
-
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-
 import Image from "next/image";
-import Link from "next/link";
-
 import {
-  ChevronLeft,
-  ChevronRight,
-  ShieldCheck,
+  BadgeCheck,
+  Quote,
   Star,
 } from "lucide-react";
+import {
+  createClient,
+} from "@supabase/supabase-js";
 
-import { supabase } from "@/lib/supabase";
-
-type Review = {
+type ReviewRow = {
   id: string;
-  product_id: string;
-  name: string;
-  title: string | null;
-  review: string;
-  rating: number;
-  verified_purchase: boolean;
-  created_at: string;
-  products: {
-    slug: string;
-    name: string;
-    image: string | null;
-  } | null;
+  product_id:
+    | string
+    | null;
+  name:
+    | string
+    | null;
+  title:
+    | string
+    | null;
+  rating:
+    | number
+    | string
+    | null;
+  review:
+    | string
+    | null;
+  created_at:
+    | string
+    | null;
 };
 
-export default function FeaturedReviews() {
-  const scrollRef =
-    useRef<HTMLDivElement>(null);
+type ProductRow = {
+  id: string;
+  name:
+    | string
+    | null;
+  image:
+    | string
+    | null;
+};
 
-  const [loading, setLoading] =
-    useState(true);
+type FeaturedReview = {
+  id: string;
+  customerName: string;
+  title: string;
+  rating: number;
+  review: string;
+  productName: string;
+  productImage:
+    | string
+    | null;
+  createdAt:
+    | string
+    | null;
+};
 
-  const [reviews, setReviews] =
-    useState<Review[]>([]);
+function getSupabaseAdmin() {
+  const supabaseUrl =
+    process.env
+      .NEXT_PUBLIC_SUPABASE_URL;
 
-  useEffect(() => {
-    loadReviews();
-  }, []);
+  const serviceRoleKey =
+    process.env
+      .SUPABASE_SERVICE_ROLE_KEY;
 
-  async function loadReviews() {
-    setLoading(true);
+  if (
+    !supabaseUrl ||
+    !serviceRoleKey
+  ) {
+    throw new Error(
+      "Missing Supabase server environment variables."
+    );
+  }
 
-    const { data, error } =
-      await supabase
-        .from("reviews")
-        .select(`
+  return createClient(
+    supabaseUrl,
+    serviceRoleKey,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    }
+  );
+}
+
+function getString(
+  value:
+    | string
+    | null
+    | undefined,
+  fallback: string
+): string {
+  const trimmedValue =
+    value?.trim();
+
+  return trimmedValue
+    ? trimmedValue
+    : fallback;
+}
+
+function getRating(
+  value:
+    | number
+    | string
+    | null
+): number {
+  const parsedRating =
+    Number(value);
+
+  if (
+    !Number.isFinite(
+      parsedRating
+    )
+  ) {
+    return 5;
+  }
+
+  return Math.min(
+    5,
+    Math.max(
+      1,
+      Math.round(
+        parsedRating
+      )
+    )
+  );
+}
+
+function formatReviewDate(
+  value:
+    | string
+    | null
+): string {
+  if (!value) {
+    return "";
+  }
+
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "";
+  }
+
+  return date.toLocaleDateString(
+    "en-IN",
+    {
+      month:
+        "long",
+      year:
+        "numeric",
+    }
+  );
+}
+
+export default async function FeaturedReviews() {
+  try {
+    const supabase =
+      getSupabaseAdmin();
+
+    const {
+      data:
+        reviewData,
+      error:
+        reviewError,
+    } = await supabase
+      .from("reviews")
+      .select(
+        `
           id,
           product_id,
           name,
           title,
-          review,
           rating,
-          verified_purchase,
-          created_at,
-          products (
-            slug,
+          review,
+          created_at
+        `
+      )
+      .eq(
+        "approved",
+        true
+      )
+      .eq(
+        "verified_purchase",
+        true
+      )
+      .order(
+        "featured",
+        {
+          ascending:
+            false,
+        }
+      )
+      .order(
+        "created_at",
+        {
+          ascending:
+            false,
+        }
+      )
+      .limit(6);
+
+    if (reviewError) {
+      throw reviewError;
+    }
+
+    const reviews =
+      (
+        reviewData ??
+        []
+      ) as ReviewRow[];
+
+    if (
+      reviews.length ===
+      0
+    ) {
+      return null;
+    }
+
+    const productIds =
+      Array.from(
+        new Set(
+          reviews
+            .map(
+              (review) =>
+                review.product_id
+            )
+            .filter(
+              (
+                productId
+              ): productId is string =>
+                Boolean(
+                  productId
+                )
+            )
+        )
+      );
+
+    let products:
+      ProductRow[] = [];
+
+    if (
+      productIds.length >
+      0
+    ) {
+      const {
+        data:
+          productData,
+        error:
+          productError,
+      } = await supabase
+        .from("products")
+        .select(
+          `
+            id,
             name,
             image
-          )
-        `)
-        .eq("approved", true)
-        .eq(
-          "verified_purchase",
-          true
+          `
         )
-        .order("created_at", {
-          ascending: false,
-        })
-        .limit(12);
-
-    if (!error && data) {
-      setReviews(
-        data as unknown as Review[]
-      );
-    }
-
-    setLoading(false);
-  }
-
-  const averageRating =
-    useMemo(() => {
-      if (!reviews.length) return 0;
-
-      const total =
-        reviews.reduce(
-          (sum, review) =>
-            sum + review.rating,
-          0
+        .in(
+          "id",
+          productIds
         );
 
-      return (
-        Math.round(
-          (total / reviews.length) *
-            10
-        ) / 10
-      );
-    }, [reviews]);
+      if (productError) {
+        throw productError;
+      }
 
-  function scrollLeft() {
-    scrollRef.current?.scrollBy({
-      left: -420,
-      behavior: "smooth",
-    });
-  }
-
-  function scrollRight() {
-    scrollRef.current?.scrollBy({
-      left: 420,
-      behavior: "smooth",
-    });
-  }
-
-  useEffect(() => {
-    if (
-      !scrollRef.current ||
-      reviews.length === 0
-    ) {
-      return;
+      products =
+        (
+          productData ??
+          []
+        ) as ProductRow[];
     }
 
-    const container =
-      scrollRef.current;
-
-    const interval =
-      window.setInterval(() => {
-        if (
-          container.scrollLeft +
-            container.clientWidth >=
-          container.scrollWidth - 20
-        ) {
-          container.scrollTo({
-            left: 0,
-            behavior: "smooth",
-          });
-        } else {
-          container.scrollBy({
-            left: 360,
-            behavior: "smooth",
-          });
-        }
-      }, 5000);
-
-    return () =>
-      window.clearInterval(
-        interval
+    const productsById =
+      new Map<
+        string,
+        ProductRow
+      >(
+        products.map(
+          (product) => [
+            product.id,
+            product,
+          ]
+        )
       );
-  }, [reviews]);
 
-  const totalReviews =
-    reviews.length;
+    const featuredReviews:
+      FeaturedReview[] =
+        reviews.map(
+          (review) => {
+            const product =
+              review.product_id
+                ? productsById.get(
+                    review.product_id
+                  )
+                : undefined;
+
+            return {
+              id:
+                review.id,
+
+              customerName:
+                getString(
+                  review.name,
+                  "Rooh & Rivet Customer"
+                ),
+
+              title:
+                getString(
+                  review.title,
+                  "A treasured experience"
+                ),
+
+              rating:
+                getRating(
+                  review.rating
+                ),
+
+              review:
+                getString(
+                  review.review,
+                  "A verified Rooh & Rivet customer shared their experience."
+                ),
+
+              productName:
+                getString(
+                  product?.name,
+                  "One-of-a-kind Rooh & Rivet jewellery"
+                ),
+
+              productImage:
+                product?.image ??
+                null,
+
+              createdAt:
+                review.created_at,
+            };
+          }
+        );
+
     return (
-        <section className="bg-white py-24">
-          <div className="mx-auto max-w-7xl px-6">
-            <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p className="uppercase tracking-[0.35em] text-sm text-[#8B6B5B]">
-                  Verified Customer Stories
-                </p>
-    
-                <h2 className="mt-4 font-serif text-5xl text-[#4B2E2E]">
-                  Loved by Our Customers
-                </h2>
-    
-                <p className="mt-5 max-w-2xl text-lg leading-8 text-[#7A6464]">
-                  Every review comes from a verified purchase,
-                  sharing genuine experiences with Rooh & Rivet
-                  jewellery.
-                </p>
-              </div>
-    
-              <div className="flex flex-wrap items-center gap-8">
-                <div>
-                  <p className="text-4xl font-bold text-[#4B2E2E]">
-                    {averageRating.toFixed(1)}
-                  </p>
-    
-                  <div className="mt-2 flex gap-1">
-                    {Array.from({ length: 5 }).map((_, index) => (
-                      <Star
-                        key={index}
-                        size={18}
-                        className={
-                          index < Math.round(averageRating)
-                            ? "fill-yellow-400 text-yellow-400"
-                            : "text-gray-300"
-                        }
-                      />
-                    ))}
-                  </div>
-                </div>
-    
-                <div className="h-14 w-px bg-[#E8DDD3]" />
-    
-                <div>
-                  <p className="text-4xl font-bold text-[#4B2E2E]">
-                    {totalReviews}
-                  </p>
-    
-                  <p className="mt-2 text-[#7A6464]">
-                    Verified Reviews
-                  </p>
-                </div>
-    
-                <div className="flex gap-3">
-                  <button
-                    onClick={scrollLeft}
-                    className="flex h-12 w-12 items-center justify-center rounded-full border border-[#E8DDD3] transition hover:bg-[#5A2D2D] hover:text-white"
-                  >
-                    <ChevronLeft size={22} />
-                  </button>
-    
-                  <button
-                    onClick={scrollRight}
-                    className="flex h-12 w-12 items-center justify-center rounded-full border border-[#E8DDD3] transition hover:bg-[#5A2D2D] hover:text-white"
-                  >
-                    <ChevronRight size={22} />
-                  </button>
-                </div>
-              </div>
-            </div>
-    
-            {loading ? (
-              <div className="mt-16 grid gap-8 md:grid-cols-2 xl:grid-cols-3">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="h-[360px] animate-pulse rounded-[32px] bg-[#F8F4EF]"
-                  />
-                ))}
-              </div>
-            ) : reviews.length === 0 ? (
-              <div className="mt-16 rounded-[32px] border border-[#E8DDD3] bg-[#F8F4EF] p-16 text-center">
-                <h3 className="font-serif text-3xl text-[#4B2E2E]">
-                  No Reviews Yet
-                </h3>
-    
-                <p className="mt-4 text-[#7A6464]">
-                  Verified customer reviews will appear here
-                  once the first orders are completed.
-                </p>
-              </div>
-            ) : (
-              <div
-                ref={scrollRef}
-                className="mt-16 flex gap-8 overflow-x-auto scroll-smooth pb-4"
-              >
-                {reviews.map((review) => (
-                  <article
-                    key={review.id}
-                    className="flex w-[360px] flex-shrink-0 flex-col rounded-[32px] border border-[#EFE5DB] bg-[#FDFBF8] p-7 shadow-sm"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex gap-1">
-                        {Array.from({ length: 5 }).map((_, index) => (
-                          <Star
-                            key={index}
-                            size={18}
-                            className={
-                              index < review.rating
-                                ? "fill-yellow-400 text-yellow-400"
-                                : "text-gray-300"
-                            }
-                          />
-                        ))}
-                      </div>
-    
-                      {review.verified_purchase && (
-                        <div className="flex items-center gap-2 rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-                          <ShieldCheck size={14} />
-                          Verified
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-6 flex items-center gap-4">
-                  <div className="relative h-16 w-16 overflow-hidden rounded-2xl bg-[#F3ECE5]">
-                    {review.products?.image ? (
-                      <Image
-                        src={review.products.image}
-                        alt={review.products.name}
-                        fill
-                        sizes="64px"
-                        className="object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-xs text-[#8B6B5B]">
-                        No Image
-                      </div>
-                    )}
-                  </div>
+      <section className="bg-white py-24">
+        <div className="mx-auto max-w-7xl px-6 sm:px-8">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-sm font-semibold uppercase tracking-[0.35em] text-[#8B6B5B]">
+              Verified Experiences
+            </p>
 
-                  <div>
-                    <p className="font-semibold text-[#4B2E2E]">
-                      {review.products?.name ??
-                        "Product"}
-                    </p>
+            <h2 className="mt-6 font-serif text-4xl text-[#4B2E2E] sm:text-5xl">
+              Stories From Our Customers
+            </h2>
 
-                    <p className="mt-1 text-sm text-[#8B6B5B]">
-                      by {review.name}
-                    </p>
-                  </div>
-                </div>
-
-                {review.title && (
-                  <h3 className="mt-6 font-serif text-2xl text-[#4B2E2E]">
-                    {review.title}
-                  </h3>
-                )}
-
-                <p className="mt-4 flex-1 leading-8 text-[#6D5C52]">
-                  "{review.review}"
-                </p>
-
-                <div className="mt-8 flex items-center justify-between border-t border-[#EFE5DB] pt-6">
-                  <p className="text-sm text-[#8B6B5B]">
-                    {new Date(
-                      review.created_at
-                    ).toLocaleDateString("en-IN", {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}
-                  </p>
-
-                  {review.products && (
-                    <Link
-                      href={`/shop/${review.products.slug}`}
-                      className="font-medium text-[#5A2D2D] transition hover:underline"
-                    >
-                      View Product
-                    </Link>
-                  )}
-                </div>
-              </article>
-            ))}
+            <p className="mx-auto mt-6 max-w-2xl leading-8 text-[#7A6464]">
+              Genuine reviews from customers who purchased and
+              received their one-of-a-kind Rooh &amp; Rivet
+              jewellery.
+            </p>
           </div>
-        )}
-      </div>
-    </section>
-  );
+
+          <div className="mt-16 grid gap-8 lg:grid-cols-2">
+            {featuredReviews.map(
+              (
+                featuredReview
+              ) => {
+                const reviewDate =
+                  formatReviewDate(
+                    featuredReview
+                      .createdAt
+                  );
+
+                return (
+                  <article
+                    key={
+                      featuredReview.id
+                    }
+                    className="overflow-hidden rounded-[34px] border border-[#E8DDD3] bg-[#FCFAF8] shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl"
+                  >
+                    <div className="grid min-h-full sm:grid-cols-[220px_minmax(0,1fr)]">
+                      <div className="relative min-h-64 bg-[#F1E8E1] sm:min-h-full">
+                        {featuredReview
+                          .productImage ? (
+                          <Image
+                            src={
+                              featuredReview
+                                .productImage
+                            }
+                            alt={
+                              featuredReview
+                                .productName
+                            }
+                            fill
+                            sizes="(max-width: 640px) 100vw, 220px"
+                            className="object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full min-h-64 items-center justify-center px-8 text-center font-serif text-xl text-[#8B6B5B]">
+                            One-of-a-kind
+                            jewellery
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col p-7 sm:p-8">
+                        <div className="flex items-start justify-between gap-5">
+                          <div
+                            className="flex gap-1"
+                            aria-label={`${featuredReview.rating} out of 5 stars`}
+                          >
+                            {Array.from({
+                              length: 5,
+                            }).map(
+                              (
+                                _,
+                                index
+                              ) => (
+                                <Star
+                                  key={
+                                    index
+                                  }
+                                  size={17}
+                                  className={
+                                    index <
+                                    featuredReview
+                                      .rating
+                                      ? "fill-amber-400 text-amber-400"
+                                      : "fill-stone-200 text-stone-200"
+                                  }
+                                />
+                              )
+                            )}
+                          </div>
+
+                          <Quote
+                            size={30}
+                            className="shrink-0 text-[#D9C1B2]"
+                          />
+                        </div>
+
+                        <h3 className="mt-5 font-serif text-2xl text-[#4B2E2E]">
+                          {
+                            featuredReview.title
+                          }
+                        </h3>
+
+                        <p className="mt-4 flex-1 leading-8 text-[#6F5952]">
+                          “
+                          {
+                            featuredReview.review
+                          }
+                          ”
+                        </p>
+
+                        <div className="mt-7 border-t border-[#E8DDD3] pt-6">
+                          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-emerald-700">
+                            <BadgeCheck
+                              size={18}
+                            />
+
+                            Verified Purchase
+                          </div>
+
+                          <p className="mt-3 font-semibold text-[#4B2E2E]">
+                            {
+                              featuredReview
+                                .customerName
+                            }
+                          </p>
+
+                          <p className="mt-1 text-sm text-[#8B6B5B]">
+                            Purchased:{" "}
+                            {
+                              featuredReview
+                                .productName
+                            }
+                          </p>
+
+                          {reviewDate ? (
+                            <p className="mt-1 text-xs uppercase tracking-[0.12em] text-[#A08374]">
+                              {
+                                reviewDate
+                              }
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                );
+              }
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  } catch (
+    error: unknown
+  ) {
+    console.error(
+      "Failed to load featured reviews:",
+      error
+    );
+
+    return null;
+  }
 }
