@@ -521,10 +521,25 @@ export default function CartPage() {
                         </div>
 
                         {isReserved ? (
-                          <p className="text-sm leading-6 text-[#8B6B5B]">
-                            This one-of-a-kind piece is held exclusively
-                            for you while the timer is active.
-                          </p>
+                          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                            <p className="text-sm font-semibold leading-6 text-amber-900">
+                              This one-of-a-kind piece is held exclusively
+                              for you while the timer is active.
+                            </p>
+
+                            <p className="mt-2 text-sm leading-6 text-amber-800">
+                              Still browsing? Remove this piece from your
+                              cart and save it to your wishlist instead,
+                              so it is not held unnecessarily.
+                            </p>
+
+                            <Link
+                              href={`/shop/${item.slug}`}
+                              className="mt-3 inline-flex text-sm font-semibold text-[#5A2D2D] underline underline-offset-4 transition hover:text-[#4B2E2E]"
+                            >
+                              View product and add to wishlist
+                            </Link>
+                          </div>
                         ) : null}
                       </div>
                     </div>
