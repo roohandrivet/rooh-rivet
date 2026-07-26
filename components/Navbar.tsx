@@ -26,6 +26,35 @@ type NavigationItem = {
   href: string;
 };
 
+type NavbarSettings = {
+  store_name: string;
+  tagline: string;
+  logo_url: string;
+  announcement_bar: string;
+  shipping_message: string;
+  email: string;
+};
+
+type NavbarSettingsDatabaseRow = {
+  store_name: string | null;
+  tagline: string | null;
+  logo_url: string | null;
+  announcement_bar: string | null;
+  shipping_message: string | null;
+  email: string | null;
+};
+
+const DEFAULT_SETTINGS: NavbarSettings = {
+  store_name: "Rooh & Rivet",
+  tagline:
+    "Timeless Elegance, Crafted for You",
+  logo_url: "",
+  announcement_bar: "",
+  shipping_message:
+    "Orders are processed within 1–3 business days.",
+  email: "",
+};
+
 const MAIN_NAVIGATION: NavigationItem[] = [
   {
     title: "Home",
@@ -68,12 +97,96 @@ const COLLECTION_LINKS: NavigationItem[] = [
   },
 ];
 
+function mapSettings(
+  row:
+    | NavbarSettingsDatabaseRow
+    | null
+): NavbarSettings {
+  return {
+    store_name:
+      row?.store_name?.trim() ||
+      DEFAULT_SETTINGS.store_name,
+    tagline:
+      row?.tagline?.trim() ||
+      DEFAULT_SETTINGS.tagline,
+    logo_url:
+      row?.logo_url?.trim() ||
+      DEFAULT_SETTINGS.logo_url,
+    announcement_bar:
+      row?.announcement_bar?.trim() ||
+      DEFAULT_SETTINGS.announcement_bar,
+    shipping_message:
+      row?.shipping_message?.trim() ||
+      DEFAULT_SETTINGS.shipping_message,
+    email:
+      row?.email?.trim() ||
+      DEFAULT_SETTINGS.email,
+  };
+}
+
+type BrandLogoProps = {
+  logoUrl: string;
+  storeName: string;
+  size: "desktop" | "mobile";
+};
+
+function BrandLogo({
+  logoUrl,
+  storeName,
+  size,
+}: BrandLogoProps) {
+  const dimension =
+    size === "desktop"
+      ? 54
+      : 48;
+
+  if (logoUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={logoUrl}
+        alt={`${storeName} logo`}
+        className={
+          size === "desktop"
+            ? "h-12 w-12 shrink-0 object-contain sm:h-[54px] sm:w-[54px]"
+            : "h-12 w-12 shrink-0 object-contain"
+        }
+      />
+    );
+  }
+
+  return (
+    <Image
+      src="/logo-icon.png"
+      alt={`${storeName} logo`}
+      width={dimension}
+      height={dimension}
+      priority={
+        size === "desktop"
+      }
+      className={
+        size === "desktop"
+          ? "h-12 w-12 shrink-0 object-contain sm:h-[54px] sm:w-[54px]"
+          : "h-12 w-12 shrink-0 object-contain"
+      }
+    />
+  );
+}
+
 export default function Navbar() {
-  const pathname = usePathname();
+  const pathname =
+    usePathname();
 
   const {
     cartCount,
   } = useCart();
+
+  const [
+    settings,
+    setSettings,
+  ] = useState<NavbarSettings>(
+    DEFAULT_SETTINGS
+  );
 
   const [
     menuOpen,
@@ -88,7 +201,64 @@ export default function Navbar() {
   useEffect(() => {
     let active = true;
 
-    async function loadUser() {
+    async function loadSettings():
+      Promise<void> {
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("settings")
+        .select(
+          `
+            store_name,
+            tagline,
+            logo_url,
+            announcement_bar,
+            shipping_message,
+            email
+          `
+        )
+        .eq(
+          "setting_key",
+          "store"
+        )
+        .maybeSingle();
+
+      if (
+        error
+      ) {
+        console.error(
+          "Navbar settings load failed:",
+          error
+        );
+        return;
+      }
+
+      if (
+        active
+      ) {
+        setSettings(
+          mapSettings(
+            data as
+              | NavbarSettingsDatabaseRow
+              | null
+          )
+        );
+      }
+    }
+
+    void loadSettings();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadUser():
+      Promise<void> {
       const {
         data: {
           user,
@@ -159,7 +329,7 @@ export default function Navbar() {
 
     function handleKeyDown(
       event: KeyboardEvent
-    ) {
+    ): void {
       if (
         event.key ===
         "Escape"
@@ -194,7 +364,8 @@ export default function Navbar() {
       ? "My Account"
       : "Login";
 
-  const navigationItems: NavigationItem[] = [
+  const navigationItems:
+    NavigationItem[] = [
     ...MAIN_NAVIGATION,
     {
       title: accountLabel,
@@ -204,100 +375,125 @@ export default function Navbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-[#E8DDD3] bg-[#F8F4EF]/95 shadow-sm backdrop-blur-xl">
-        <div className="mx-auto flex h-24 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:gap-6 lg:px-10">
-          <Link
-            href="/"
-            aria-label="Rooh and Rivet home"
-            className="flex shrink-0 items-center gap-3 sm:gap-4"
-          >
-            <Image
-              src="/logo-icon.png"
-              alt="Rooh & Rivet"
-              width={54}
-              height={54}
-              priority
-              className="h-12 w-12 object-contain sm:h-[54px] sm:w-[54px]"
-            />
-
-            <div className="hidden sm:block">
-              <h1 className="font-serif text-[2.15rem] leading-none text-[#4B2E2E]">
-                Rooh &amp; Rivet
-              </h1>
-
-              <p className="mt-2 text-[11px] uppercase tracking-[7px] text-[#8B6B5B]">
-                Rivet Your Style
-              </p>
-            </div>
-          </Link>
-
-          <div className="hidden flex-1 justify-center lg:flex">
-            <Search />
+      <header className="sticky top-0 z-50 bg-[#F8F4EF]/95 shadow-sm backdrop-blur-xl">
+        {settings.announcement_bar ? (
+          <div className="bg-[#5A2D2D] px-4 py-2.5 text-center text-xs font-medium tracking-wide text-[#F8F4EF] sm:text-sm">
+            {
+              settings.announcement_bar
+            }
           </div>
+        ) : null}
 
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="hidden lg:block">
-              <CurrencySelector />
+        <div className="border-b border-[#E8DDD3]">
+          <div className="mx-auto flex h-24 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:gap-6 lg:px-10">
+            <Link
+              href="/"
+              aria-label={`${settings.store_name} home`}
+              className="flex min-w-0 shrink-0 items-center gap-3 sm:gap-4"
+            >
+              <BrandLogo
+                logoUrl={
+                  settings.logo_url
+                }
+                storeName={
+                  settings.store_name
+                }
+                size="desktop"
+              />
+
+              <div className="hidden min-w-0 sm:block">
+                <p className="truncate font-serif text-[2.15rem] leading-none text-[#4B2E2E]">
+                  {
+                    settings.store_name
+                  }
+                </p>
+
+                {settings.tagline ? (
+                  <p className="mt-2 max-w-[280px] truncate text-[11px] uppercase tracking-[5px] text-[#8B6B5B] xl:tracking-[7px]">
+                    {
+                      settings.tagline
+                    }
+                  </p>
+                ) : null}
+              </div>
+            </Link>
+
+            <div className="hidden flex-1 justify-center lg:flex">
+              <Search />
             </div>
 
-            <Link
-              href={accountHref}
-              aria-label={accountLabel}
-              title={accountLabel}
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-[#F3ECE5] transition hover:bg-[#E8DDD3]"
-            >
-              <User
-                size={22}
-                className="text-[#5A2D2D]"
-              />
-            </Link>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="hidden lg:block">
+                <CurrencySelector />
+              </div>
 
-            <Link
-              href="/cart"
-              aria-label={`Cart with ${cartCount} ${
-                cartCount === 1
-                  ? "item"
-                  : "items"
-              }`}
-              title="Cart"
-              className="relative flex h-11 w-11 items-center justify-center rounded-full bg-[#F3ECE5] transition hover:bg-[#E8DDD3]"
-            >
-              <ShoppingBag
-                size={22}
-                className="text-[#5A2D2D]"
-              />
+              <Link
+                href={accountHref}
+                aria-label={
+                  accountLabel
+                }
+                title={
+                  accountLabel
+                }
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-[#F3ECE5] transition hover:bg-[#E8DDD3]"
+              >
+                <User
+                  size={22}
+                  className="text-[#5A2D2D]"
+                />
+              </Link>
 
-              {cartCount > 0 ? (
-                <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#5A2D2D] px-1 text-[11px] font-semibold text-white">
-                  {cartCount > 99
-                    ? "99+"
-                    : cartCount}
-                </span>
-              ) : null}
-            </Link>
+              <Link
+                href="/cart"
+                aria-label={`Cart with ${cartCount} ${
+                  cartCount === 1
+                    ? "item"
+                    : "items"
+                }`}
+                title="Cart"
+                className="relative flex h-11 w-11 items-center justify-center rounded-full bg-[#F3ECE5] transition hover:bg-[#E8DDD3]"
+              >
+                <ShoppingBag
+                  size={22}
+                  className="text-[#5A2D2D]"
+                />
 
-            <button
-              type="button"
-              onClick={() =>
-                setMenuOpen(true)
-              }
-              aria-label="Open navigation menu"
-              aria-expanded={menuOpen}
-              aria-controls="mobile-navigation"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-[#F3ECE5] transition hover:bg-[#E8DDD3]"
-            >
-              <Menu
-                size={24}
-                className="text-[#5A2D2D]"
-              />
-            </button>
+                {cartCount > 0 ? (
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#5A2D2D] px-1 text-[11px] font-semibold text-white">
+                    {cartCount > 99
+                      ? "99+"
+                      : cartCount}
+                  </span>
+                ) : null}
+              </Link>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setMenuOpen(true)
+                }
+                aria-label="Open navigation menu"
+                aria-expanded={
+                  menuOpen
+                }
+                aria-controls="mobile-navigation"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-[#F3ECE5] transition hover:bg-[#E8DDD3]"
+              >
+                <Menu
+                  size={24}
+                  className="text-[#5A2D2D]"
+                />
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
       <aside
         id="mobile-navigation"
-        aria-hidden={!menuOpen}
+        aria-hidden={
+          !menuOpen
+        }
         className={`fixed right-0 top-0 z-[70] h-screen w-[380px] max-w-[92vw] transform bg-white shadow-2xl transition-transform duration-500 ease-in-out ${
           menuOpen
             ? "translate-x-0"
@@ -310,24 +506,33 @@ export default function Navbar() {
             onClick={() =>
               setMenuOpen(false)
             }
-            className="flex items-center gap-4"
+            aria-label={`${settings.store_name} home`}
+            className="flex min-w-0 items-center gap-4"
           >
-            <Image
-              src="/logo-icon.png"
-              alt="Rooh & Rivet"
-              width={48}
-              height={48}
-              className="object-contain"
+            <BrandLogo
+              logoUrl={
+                settings.logo_url
+              }
+              storeName={
+                settings.store_name
+              }
+              size="mobile"
             />
 
-            <div>
-              <h2 className="font-serif text-[1.7rem] leading-none text-[#4B2E2E] sm:text-[2rem]">
-                Rooh &amp; Rivet
-              </h2>
-
-              <p className="mt-2 text-[10px] uppercase tracking-[5px] text-[#8B6B5B] sm:text-[11px] sm:tracking-[7px]">
-                Rivet Your Style
+            <div className="min-w-0">
+              <p className="truncate font-serif text-[1.7rem] leading-none text-[#4B2E2E] sm:text-[2rem]">
+                {
+                  settings.store_name
+                }
               </p>
+
+              {settings.tagline ? (
+                <p className="mt-2 max-w-[190px] truncate text-[10px] uppercase tracking-[4px] text-[#8B6B5B] sm:text-[11px] sm:tracking-[5px]">
+                  {
+                    settings.tagline
+                  }
+                </p>
+              ) : null}
             </div>
           </Link>
 
@@ -366,15 +571,23 @@ export default function Navbar() {
             {navigationItems.map(
               (item) => (
                 <Link
-                  key={item.title}
-                  href={item.href}
+                  key={
+                    item.title
+                  }
+                  href={
+                    item.href
+                  }
                   onClick={() =>
-                    setMenuOpen(false)
+                    setMenuOpen(
+                      false
+                    )
                   }
                   className="flex items-center justify-between border-b border-[#F0E8E1] py-5 text-lg text-[#4B2E2E] transition hover:text-[#8B6B5B]"
                 >
                   <span>
-                    {item.title}
+                    {
+                      item.title
+                    }
                   </span>
 
                   <ChevronRight
@@ -398,14 +611,22 @@ export default function Navbar() {
             {COLLECTION_LINKS.map(
               (item) => (
                 <Link
-                  key={item.title}
-                  href={item.href}
+                  key={
+                    item.title
+                  }
+                  href={
+                    item.href
+                  }
                   onClick={() =>
-                    setMenuOpen(false)
+                    setMenuOpen(
+                      false
+                    )
                   }
                   className="block text-[#5A2D2D] transition hover:text-[#8B6B5B]"
                 >
-                  {item.title}
+                  {
+                    item.title
+                  }
                 </Link>
               )
             )}
@@ -413,13 +634,19 @@ export default function Navbar() {
 
           <div className="mt-10 rounded-[28px] border border-[#E8DDD3] bg-[#F8F4EF] p-7">
             <h3 className="font-serif text-2xl text-[#4B2E2E]">
-              Crafted for Every Story
+              {
+                settings.tagline ||
+                settings.store_name
+              }
             </h3>
 
-            <p className="mt-4 leading-7 text-[#7A6464]">
-              Every Rooh &amp; Rivet piece is handcrafted to
-              celebrate timeless elegance and everyday luxury.
-            </p>
+            {settings.shipping_message ? (
+              <p className="mt-4 whitespace-pre-line leading-7 text-[#7A6464]">
+                {
+                  settings.shipping_message
+                }
+              </p>
+            ) : null}
 
             <Link
               href="/shop"
@@ -432,15 +659,22 @@ export default function Navbar() {
             </Link>
           </div>
 
-          <div className="mt-10 pb-8">
-            <a
-              href="mailto:hello@roohrivet.com"
-              className="flex items-center gap-3 text-[#5A2D2D] transition hover:text-[#8B6B5B]"
-            >
-              <Mail size={18} />
-              hello@roohrivet.com
-            </a>
-          </div>
+          {settings.email ? (
+            <div className="mt-10 pb-8">
+              <a
+                href={`mailto:${settings.email}`}
+                className="flex items-center gap-3 break-all text-[#5A2D2D] transition hover:text-[#8B6B5B]"
+              >
+                <Mail
+                  size={18}
+                  className="shrink-0"
+                />
+                {
+                  settings.email
+                }
+              </a>
+            </div>
+          ) : null}
         </div>
       </aside>
 

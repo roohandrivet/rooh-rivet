@@ -95,6 +95,9 @@ type ShippingSettings = {
   internationalShippingPerItem: number;
   internationalDiscountThreshold: number;
   internationalShippingDiscountPercent: number;
+  shippingMessage: string;
+  privacyUrl: string;
+  termsUrl: string;
 };
 
 const INITIAL_FORM: CheckoutForm = {
@@ -115,6 +118,10 @@ const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
   internationalShippingPerItem: 1000,
   internationalDiscountThreshold: 10000,
   internationalShippingDiscountPercent: 50,
+  shippingMessage:
+    "Orders are processed within 1–3 business days.",
+  privacyUrl: "/privacy",
+  termsUrl: "/terms",
 };
 
 const INDIA_COUNTRY_NAMES = new Set([
@@ -490,9 +497,21 @@ export default function CheckoutPage() {
       } = await supabase
         .from("settings")
         .select(
-          "india_shipping_cost, india_free_shipping_threshold, international_shipping_per_item, international_discount_threshold, international_shipping_discount_percent"
+          `
+            india_shipping_cost,
+            india_free_shipping_threshold,
+            international_shipping_per_item,
+            international_discount_threshold,
+            international_shipping_discount_percent,
+            shipping_message,
+            privacy_url,
+            terms_url
+          `
         )
-        .limit(1)
+        .eq(
+          "setting_key",
+          "store"
+        )
         .maybeSingle();
 
       if (error) {
@@ -537,6 +556,27 @@ export default function CheckoutPage() {
             DEFAULT_SHIPPING_SETTINGS
               .internationalShippingDiscountPercent
           ),
+        shippingMessage:
+          typeof data.shipping_message ===
+            "string" &&
+          data.shipping_message.trim()
+            ? data.shipping_message.trim()
+            : DEFAULT_SHIPPING_SETTINGS
+                .shippingMessage,
+        privacyUrl:
+          typeof data.privacy_url ===
+            "string" &&
+          data.privacy_url.trim()
+            ? data.privacy_url.trim()
+            : DEFAULT_SHIPPING_SETTINGS
+                .privacyUrl,
+        termsUrl:
+          typeof data.terms_url ===
+            "string" &&
+          data.terms_url.trim()
+            ? data.terms_url.trim()
+            : DEFAULT_SHIPPING_SETTINGS
+                .termsUrl,
       });
     } catch (error) {
       console.error(
@@ -949,9 +989,19 @@ export default function CheckoutPage() {
           className="grid gap-10 lg:grid-cols-[2fr_1fr]"
         >
           <section className="rounded-3xl border border-[#E8DDD3] bg-white p-6 shadow-sm sm:p-8">
-            <h2 className="mb-8 font-serif text-3xl text-[#4B2E2E]">
+            <h2 className="font-serif text-3xl text-[#4B2E2E]">
               Shipping Information
             </h2>
+
+            {shippingSettings.shippingMessage ? (
+              <p className="mb-8 mt-3 whitespace-pre-line rounded-2xl border border-[#E8DDD3] bg-[#FCF8F4] px-5 py-4 text-sm leading-6 text-[#7A6464]">
+                {
+                  shippingSettings.shippingMessage
+                }
+              </p>
+            ) : (
+              <div className="mb-8" />
+            )}
 
             <div className="grid gap-6 md:grid-cols-2">
               <input
@@ -1434,8 +1484,25 @@ export default function CheckoutPage() {
 
               <p className="mt-4 text-center text-sm leading-6 text-[#8B6B5B]">
                 By placing your order you agree
-                to our Terms &amp; Conditions and
-                Privacy Policy.
+                to our{" "}
+                <Link
+                  href={
+                    shippingSettings.termsUrl
+                  }
+                  className="font-medium text-[#5A2D2D] underline-offset-4 transition hover:underline"
+                >
+                  Terms &amp; Conditions
+                </Link>{" "}
+                and{" "}
+                <Link
+                  href={
+                    shippingSettings.privacyUrl
+                  }
+                  className="font-medium text-[#5A2D2D] underline-offset-4 transition hover:underline"
+                >
+                  Privacy Policy
+                </Link>
+                .
               </p>
             </div>
           </aside>

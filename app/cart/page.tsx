@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useState,
 } from "react";
 import Image from "next/image";
@@ -29,6 +30,75 @@ import {
 import {
   supabase,
 } from "@/lib/supabase";
+
+type CartShippingSettingsRow = {
+  india_shipping_cost:
+    | number
+    | string
+    | null;
+  india_free_shipping_threshold:
+    | number
+    | string
+    | null;
+  international_shipping_per_item:
+    | number
+    | string
+    | null;
+  international_discount_threshold:
+    | number
+    | string
+    | null;
+  international_shipping_discount_percent:
+    | number
+    | string
+    | null;
+  shipping_message:
+    | string
+    | null;
+};
+
+type CartShippingSettings = {
+  indiaShippingCost: number;
+  indiaFreeShippingThreshold: number;
+  internationalShippingPerItem: number;
+  internationalDiscountThreshold: number;
+  internationalShippingDiscountPercent: number;
+  shippingMessage: string;
+};
+
+const DEFAULT_SHIPPING_SETTINGS:
+  CartShippingSettings = {
+  indiaShippingCost: 100,
+  indiaFreeShippingThreshold: 999,
+  internationalShippingPerItem: 1000,
+  internationalDiscountThreshold: 10000,
+  internationalShippingDiscountPercent: 50,
+  shippingMessage:
+    "Orders are processed within 1–3 business days.",
+};
+
+function toNonNegativeNumber(
+  value:
+    | number
+    | string
+    | null
+    | undefined,
+  fallback: number
+): number {
+  const parsed =
+    Number(value);
+
+  if (
+    !Number.isFinite(
+      parsed
+    ) ||
+    parsed < 0
+  ) {
+    return fallback;
+  }
+
+  return parsed;
+}
 
 function formatRemainingTime(
   totalSeconds: number
@@ -89,6 +159,133 @@ export default function CartPage() {
     checkingOut,
     setCheckingOut,
   ] = useState(false);
+
+  const [
+    shippingSettings,
+    setShippingSettings,
+  ] =
+    useState<CartShippingSettings>(
+      DEFAULT_SHIPPING_SETTINGS
+    );
+
+  const [
+    shippingSettingsLoading,
+    setShippingSettingsLoading,
+  ] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadShippingSettings():
+      Promise<void> {
+      try {
+        const {
+          data,
+          error,
+        } = await supabase
+          .from(
+            "settings"
+          )
+          .select(
+            `
+              india_shipping_cost,
+              india_free_shipping_threshold,
+              international_shipping_per_item,
+              international_discount_threshold,
+              international_shipping_discount_percent,
+              shipping_message
+            `
+          )
+          .eq(
+            "setting_key",
+            "store"
+          )
+          .maybeSingle();
+
+        if (error) {
+          throw error;
+        }
+
+        if (
+          !active ||
+          !data
+        ) {
+          return;
+        }
+
+        const row =
+          data as
+            CartShippingSettingsRow;
+
+        setShippingSettings({
+          indiaShippingCost:
+            toNonNegativeNumber(
+              row.india_shipping_cost,
+              DEFAULT_SHIPPING_SETTINGS
+                .indiaShippingCost
+            ),
+
+          indiaFreeShippingThreshold:
+            toNonNegativeNumber(
+              row.india_free_shipping_threshold,
+              DEFAULT_SHIPPING_SETTINGS
+                .indiaFreeShippingThreshold
+            ),
+
+          internationalShippingPerItem:
+            toNonNegativeNumber(
+              row.international_shipping_per_item,
+              DEFAULT_SHIPPING_SETTINGS
+                .internationalShippingPerItem
+            ),
+
+          internationalDiscountThreshold:
+            toNonNegativeNumber(
+              row.international_discount_threshold,
+              DEFAULT_SHIPPING_SETTINGS
+                .internationalDiscountThreshold
+            ),
+
+          internationalShippingDiscountPercent:
+            Math.min(
+              100,
+              toNonNegativeNumber(
+                row.international_shipping_discount_percent,
+                DEFAULT_SHIPPING_SETTINGS
+                  .internationalShippingDiscountPercent
+              )
+            ),
+
+          shippingMessage:
+            typeof row.shipping_message ===
+              "string" &&
+            row.shipping_message.trim()
+              ? row.shipping_message.trim()
+              : DEFAULT_SHIPPING_SETTINGS
+                  .shippingMessage,
+        });
+      } catch (
+        error: unknown
+      ) {
+        console.error(
+          "Unable to load cart shipping settings:",
+          error
+        );
+      } finally {
+        if (active) {
+          setShippingSettingsLoading(
+            false
+          );
+        }
+      }
+    }
+
+    void loadShippingSettings();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function clearErrors(): void {
     setCheckoutError("");
@@ -618,10 +815,66 @@ export default function CartPage() {
               INR values.
             </div>
 
-            <p className="mt-4 text-sm leading-6 text-[#8B6B5B]">
-              Shipping is based on your delivery country and final
-              order value.
-            </p>
+            <div className="mt-4 rounded-2xl border border-[#E8DDD3] bg-[#FCF8F4] p-4 text-sm leading-6 text-[#8B6B5B]">
+              {shippingSettingsLoading ? (
+                <div className="flex items-center gap-2">
+                  <Loader2
+                    size={15}
+                    className="animate-spin"
+                  />
+
+                  Loading shipping policy...
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="font-semibold text-[#5A2D2D]">
+                    Shipping policy
+                  </p>
+
+                  <p>
+                    India:{" "}
+                    {formatPrice(
+                      shippingSettings
+                        .indiaShippingCost
+                    )}{" "}
+                    shipping, free from{" "}
+                    {formatPrice(
+                      shippingSettings
+                        .indiaFreeShippingThreshold
+                    )}
+                    .
+                  </p>
+
+                  <p>
+                    International:{" "}
+                    {formatPrice(
+                      shippingSettings
+                        .internationalShippingPerItem
+                    )}{" "}
+                    per item, with{" "}
+                    {
+                      shippingSettings
+                        .internationalShippingDiscountPercent
+                    }
+                    % off shipping from{" "}
+                    {formatPrice(
+                      shippingSettings
+                        .internationalDiscountThreshold
+                    )}
+                    .
+                  </p>
+
+                  {shippingSettings.shippingMessage ? (
+                    <p className="whitespace-pre-line">
+                      {
+                        shippingSettings
+                          .shippingMessage
+                      }
+                    </p>
+                  ) : null}
+                </div>
+              )}
+            </div>
 
             <button
               type="button"

@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type {
+  Metadata,
+} from "next";
 import Link from "next/link";
 import {
-  Clock3,
   ExternalLink,
   Mail,
   MapPin,
@@ -23,8 +24,6 @@ type ContactContent = {
   address: string;
   phone: string;
   email: string;
-  google_maps_url: string;
-  business_hours: string;
   facebook_url: string;
   instagram_url: string;
   x_url: string;
@@ -38,9 +37,6 @@ const DEFAULT_CONTENT: ContactContent = {
   address: "",
   phone: "",
   email: "hello@roohandrivet.com",
-  google_maps_url: "",
-  business_hours:
-    "Monday–Saturday, 10:00 AM–6:00 PM",
   facebook_url: "",
   instagram_url: "",
   x_url: "",
@@ -73,8 +69,6 @@ export default async function ContactPage() {
         address,
         phone,
         email,
-        google_maps_url,
-        business_hours,
         facebook_url,
         instagram_url,
         x_url,
@@ -105,12 +99,6 @@ export default async function ContactPage() {
     email:
       data?.email?.trim() ||
       DEFAULT_CONTENT.email,
-    google_maps_url:
-      data?.google_maps_url?.trim() ||
-      DEFAULT_CONTENT.google_maps_url,
-    business_hours:
-      data?.business_hours?.trim() ||
-      DEFAULT_CONTENT.business_hours,
     facebook_url:
       data?.facebook_url?.trim() ||
       DEFAULT_CONTENT.facebook_url,
@@ -177,17 +165,18 @@ export default async function ContactPage() {
           </p>
 
           <h1 className="mt-6 font-serif text-6xl md:text-7xl">
-            Contact Rooh & Rivet
+            Contact Rooh &amp; Rivet
           </h1>
 
           <p className="mx-auto mt-7 max-w-2xl text-lg leading-8 text-[#725D59]">
-            Speak with us about a piece, an order or anything else you need. Our team will be happy to help.
+            Speak with us about a piece, an order or anything else you need.
+            Our team will be happy to help.
           </p>
         </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-6 py-20 lg:px-10">
-        <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-3">
           <article className="rounded-[28px] border border-[#E7DBD1] bg-white p-8">
             <Mail className="text-[#5A2D2D]" />
 
@@ -238,35 +227,8 @@ export default async function ContactPage() {
                 "Add the business address in Content Management."}
             </p>
           </article>
-
-          <article className="rounded-[28px] border border-[#E7DBD1] bg-white p-8">
-            <Clock3 className="text-[#5A2D2D]" />
-
-            <h2 className="mt-6 font-serif text-2xl">
-              Business Hours
-            </h2>
-
-            <p className="mt-3 whitespace-pre-line leading-7 text-[#725D59]">
-              {content.business_hours}
-            </p>
-          </article>
         </div>
       </section>
-
-      {content.google_maps_url ? (
-        <section className="mx-auto max-w-7xl px-6 pb-20 lg:px-10">
-          <div className="overflow-hidden rounded-[36px] border border-[#E7DBD1] bg-white shadow-sm">
-            <iframe
-              src={content.google_maps_url}
-              title="Rooh & Rivet location"
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-              className="h-[440px] w-full border-0"
-              allowFullScreen
-            />
-          </div>
-        </section>
-      ) : null}
 
       <section className="border-y border-[#E8DED2] bg-[#5A2D2D] text-white">
         <div className="mx-auto max-w-5xl px-6 py-20 text-center">
@@ -280,7 +242,7 @@ export default async function ContactPage() {
           </p>
 
           <h2 className="mt-5 font-serif text-5xl">
-            Follow the world of Rooh & Rivet.
+            Follow the world of Rooh &amp; Rivet.
           </h2>
 
           {socialLinks.length > 0 ? (
@@ -295,6 +257,7 @@ export default async function ContactPage() {
                     className="inline-flex items-center gap-2 rounded-full border border-white/25 px-5 py-3 font-medium transition hover:bg-white hover:text-[#5A2D2D]"
                   >
                     {item.label}
+
                     <ExternalLink
                       size={16}
                     />

@@ -3,20 +3,40 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
+  useRef,
   useState,
+  type ChangeEvent,
   type ReactNode,
 } from "react";
 import {
   CheckCircle2,
   CircleDollarSign,
   Clock3,
+  ImageIcon,
+  Link2,
   Loader2,
+  Mail,
+  MapPin,
+  Megaphone,
+  MessageCircle,
+  Newspaper,
+  Phone,
   RefreshCw,
   Save,
+  Search,
   ShieldCheck,
+  Store,
+  Trash2,
+  Truck,
+  Upload,
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
+
+const SETTINGS_KEY = "store";
+const STORAGE_BUCKET = "site-content";
+const MAX_IMAGE_SIZE = 8 * 1024 * 1024;
 
 const AVAILABLE_CURRENCIES = [
   "INR",
@@ -27,22 +47,47 @@ const AVAILABLE_CURRENCIES = [
   "CAD",
 ] as const;
 
+const IMAGE_FIELDS = [
+  "logo_url",
+  "favicon_url",
+  "seo_image_url",
+] as const;
+
 type CurrencyCode =
   (typeof AVAILABLE_CURRENCIES)[number];
 
+type ImageField =
+  (typeof IMAGE_FIELDS)[number];
+
 type SettingsRow = {
   id: string;
+  setting_key: string;
   store_name: string;
   tagline: string;
   whatsapp: string;
   instagram: string;
   email: string;
-  hero_title: string;
-  hero_subtitle: string;
+  phone: string;
+  address: string;
+  facebook_url: string;
+  x_url: string;
+  youtube_url: string;
+  linkedin_url: string;
+  pinterest_url: string;
   announcement_bar: string;
   shipping_message: string;
   footer_text: string;
+  newsletter_heading: string;
+  newsletter_description: string;
+  newsletter_button_text: string;
+  newsletter_disclaimer: string;
   logo_url: string;
+  favicon_url: string;
+  seo_title: string;
+  seo_description: string;
+  seo_image_url: string;
+  privacy_url: string;
+  terms_url: string;
   base_currency: CurrencyCode;
   supported_currencies: CurrencyCode[];
   auto_update_exchange_rates: boolean;
@@ -60,17 +105,33 @@ type EditableSettings = Omit<
 
 type SettingsDatabaseRow = {
   id: string;
+  setting_key: string | null;
   store_name: string | null;
   tagline: string | null;
   whatsapp: string | null;
   instagram: string | null;
   email: string | null;
-  hero_title: string | null;
-  hero_subtitle: string | null;
+  phone: string | null;
+  address: string | null;
+  facebook_url: string | null;
+  x_url: string | null;
+  youtube_url: string | null;
+  linkedin_url: string | null;
+  pinterest_url: string | null;
   announcement_bar: string | null;
   shipping_message: string | null;
   footer_text: string | null;
+  newsletter_heading: string | null;
+  newsletter_description: string | null;
+  newsletter_button_text: string | null;
+  newsletter_disclaimer: string | null;
   logo_url: string | null;
+  favicon_url: string | null;
+  seo_title: string | null;
+  seo_description: string | null;
+  seo_image_url: string | null;
+  privacy_url: string | null;
+  terms_url: string | null;
   base_currency: string | null;
   supported_currencies: unknown;
   auto_update_exchange_rates: boolean | null;
@@ -114,24 +175,58 @@ type Message = {
   text: string;
 };
 
-const DEFAULT_SETTINGS: EditableSettings = {
+type SelectedFiles =
+  Partial<
+    Record<ImageField, File>
+  >;
+
+type PreviewUrls =
+  Partial<
+    Record<ImageField, string>
+  >;
+
+type RemovedImages =
+  Record<ImageField, boolean>;
+
+const DEFAULT_SETTINGS:
+  EditableSettings = {
+  setting_key: SETTINGS_KEY,
   store_name: "Rooh & Rivet",
   tagline:
     "Timeless Elegance, Crafted for You",
   whatsapp: "",
   instagram: "",
   email: "",
-  hero_title:
-    "Timeless Elegance, Crafted for You",
-  hero_subtitle:
-    "Discover handcrafted jewellery inspired by heritage and designed for modern elegance.",
+  phone: "",
+  address: "",
+  facebook_url: "",
+  x_url: "",
+  youtube_url: "",
+  linkedin_url: "",
+  pinterest_url: "",
   announcement_bar:
     "Free shipping across India on orders of ₹999 or more.",
   shipping_message:
     "Orders are processed within 1–3 business days.",
   footer_text:
-    "© Rooh & Rivet. All Rights Reserved.",
+    "Timeless handcrafted jewellery inspired by elegance, craftsmanship and the stories that deserve to be remembered.",
+  newsletter_heading:
+    "Join the Rooh & Rivet Journal",
+  newsletter_description:
+    "Receive new collection launches, styling inspiration and private offers.",
+  newsletter_button_text:
+    "Subscribe",
+  newsletter_disclaimer:
+    "By subscribing, you agree to receive Rooh & Rivet updates. You may unsubscribe at any time.",
   logo_url: "",
+  favicon_url: "",
+  seo_title:
+    "Rooh & Rivet | Luxury Handcrafted Jewellery",
+  seo_description:
+    "Luxury handcrafted jewellery designed for timeless elegance.",
+  seo_image_url: "",
+  privacy_url: "/privacy",
+  terms_url: "/terms",
   base_currency: "INR",
   supported_currencies: [
     "INR",
@@ -159,6 +254,44 @@ const CURRENCY_LABELS: Record<
   GBP: "British Pound",
   AUD: "Australian Dollar",
   CAD: "Canadian Dollar",
+};
+
+const EMPTY_REMOVED_IMAGES:
+  RemovedImages = {
+  logo_url: false,
+  favicon_url: false,
+  seo_image_url: false,
+};
+
+const IMAGE_LABELS: Record<
+  ImageField,
+  {
+    label: string;
+    description: string;
+    recommended: string;
+  }
+> = {
+  logo_url: {
+    label: "Store Logo",
+    description:
+      "Used in the navbar, footer and branded areas.",
+    recommended:
+      "PNG, WebP or SVG with a transparent background.",
+  },
+  favicon_url: {
+    label: "Browser Favicon",
+    description:
+      "Shown in browser tabs and saved bookmarks.",
+    recommended:
+      "Square PNG, WebP or SVG.",
+  },
+  seo_image_url: {
+    label: "SEO Sharing Image",
+    description:
+      "Used when the website is shared on social platforms.",
+    recommended:
+      "JPG, PNG or WebP around 1200 × 630 pixels.",
+  },
 };
 
 function isCurrencyCode(
@@ -207,8 +340,19 @@ function toSupportedCurrencies(
 function mapSettingsRow(
   data: SettingsDatabaseRow
 ): SettingsRow {
+  const baseCurrency =
+    data.base_currency &&
+    isCurrencyCode(
+      data.base_currency
+    )
+      ? data.base_currency
+      : DEFAULT_SETTINGS.base_currency;
+
   return {
     id: data.id,
+    setting_key:
+      data.setting_key ??
+      SETTINGS_KEY,
     store_name:
       data.store_name ??
       DEFAULT_SETTINGS.store_name,
@@ -224,12 +368,27 @@ function mapSettingsRow(
     email:
       data.email ??
       DEFAULT_SETTINGS.email,
-    hero_title:
-      data.hero_title ??
-      DEFAULT_SETTINGS.hero_title,
-    hero_subtitle:
-      data.hero_subtitle ??
-      DEFAULT_SETTINGS.hero_subtitle,
+    phone:
+      data.phone ??
+      DEFAULT_SETTINGS.phone,
+    address:
+      data.address ??
+      DEFAULT_SETTINGS.address,
+    facebook_url:
+      data.facebook_url ??
+      DEFAULT_SETTINGS.facebook_url,
+    x_url:
+      data.x_url ??
+      DEFAULT_SETTINGS.x_url,
+    youtube_url:
+      data.youtube_url ??
+      DEFAULT_SETTINGS.youtube_url,
+    linkedin_url:
+      data.linkedin_url ??
+      DEFAULT_SETTINGS.linkedin_url,
+    pinterest_url:
+      data.pinterest_url ??
+      DEFAULT_SETTINGS.pinterest_url,
     announcement_bar:
       data.announcement_bar ??
       DEFAULT_SETTINGS.announcement_bar,
@@ -239,15 +398,48 @@ function mapSettingsRow(
     footer_text:
       data.footer_text ??
       DEFAULT_SETTINGS.footer_text,
+    newsletter_heading:
+      data.newsletter_heading ??
+      DEFAULT_SETTINGS.newsletter_heading,
+    newsletter_description:
+      data.newsletter_description ??
+      DEFAULT_SETTINGS.newsletter_description,
+    newsletter_button_text:
+      data.newsletter_button_text ??
+      DEFAULT_SETTINGS.newsletter_button_text,
+    newsletter_disclaimer:
+      data.newsletter_disclaimer ??
+      DEFAULT_SETTINGS.newsletter_disclaimer,
     logo_url:
       data.logo_url ??
       DEFAULT_SETTINGS.logo_url,
-    base_currency: "INR",
+    favicon_url:
+      data.favicon_url ??
+      DEFAULT_SETTINGS.favicon_url,
+    seo_title:
+      data.seo_title ??
+      DEFAULT_SETTINGS.seo_title,
+    seo_description:
+      data.seo_description ??
+      DEFAULT_SETTINGS.seo_description,
+    seo_image_url:
+      data.seo_image_url ??
+      DEFAULT_SETTINGS.seo_image_url,
+    privacy_url:
+      data.privacy_url ??
+      DEFAULT_SETTINGS.privacy_url,
+    terms_url:
+      data.terms_url ??
+      DEFAULT_SETTINGS.terms_url,
+    base_currency:
+      baseCurrency,
     supported_currencies:
       toSupportedCurrencies(
         data.supported_currencies
       ),
-    auto_update_exchange_rates: true,
+    auto_update_exchange_rates:
+      data.auto_update_exchange_rates ??
+      DEFAULT_SETTINGS.auto_update_exchange_rates,
     india_shipping_cost:
       toNumber(
         data.india_shipping_cost,
@@ -349,22 +541,102 @@ function formatRateUpdatedAt(
   );
 }
 
+function createSafeFileName(
+  file: File
+): string {
+  const extension =
+    file.name
+      .split(".")
+      .pop()
+      ?.toLowerCase() ||
+    "png";
+
+  const baseName =
+    file.name
+      .replace(/\.[^/.]+$/, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) ||
+    "settings-image";
+
+  return `${Date.now()}-${baseName}.${extension}`;
+}
+
+function getStoredObjectPath(
+  publicUrl: string
+): string | null {
+  if (!publicUrl) {
+    return null;
+  }
+
+  const marker =
+    `/storage/v1/object/public/${STORAGE_BUCKET}/`;
+
+  const markerIndex =
+    publicUrl.indexOf(marker);
+
+  if (markerIndex === -1) {
+    return null;
+  }
+
+  const objectPath =
+    publicUrl.slice(
+      markerIndex +
+        marker.length
+    );
+
+  return objectPath
+    ? decodeURIComponent(
+        objectPath
+      )
+    : null;
+}
+
+function createEmptySettings():
+  SettingsRow {
+  return {
+    id: "",
+    ...DEFAULT_SETTINGS,
+  };
+}
+
 export default function AdminSettingsPage() {
   const [
     settings,
     setSettings,
-  ] = useState<SettingsRow>({
-    id: "",
-    ...DEFAULT_SETTINGS,
-  });
+  ] = useState<SettingsRow>(
+    createEmptySettings
+  );
 
   const [
     initialSettings,
     setInitialSettings,
-  ] = useState<SettingsRow>({
-    id: "",
-    ...DEFAULT_SETTINGS,
-  });
+  ] = useState<SettingsRow>(
+    createEmptySettings
+  );
+
+  const [
+    selectedFiles,
+    setSelectedFiles,
+  ] = useState<SelectedFiles>({});
+
+  const [
+    previewUrls,
+    setPreviewUrls,
+  ] = useState<PreviewUrls>({});
+
+  const [
+    removedImages,
+    setRemovedImages,
+  ] = useState<RemovedImages>(
+    EMPTY_REMOVED_IMAGES
+  );
+
+  const objectUrlsRef =
+    useRef<Set<string>>(
+      new Set()
+    );
 
   const [
     pageLoading,
@@ -410,7 +682,64 @@ export default function AdminSettingsPage() {
   const [
     ratesSource,
     setRatesSource,
-  ] = useState("Live provider");
+  ] = useState(
+    "Live provider"
+  );
+
+  const hasPendingImageChanges =
+    IMAGE_FIELDS.some(
+      (field) =>
+        Boolean(
+          selectedFiles[field]
+        ) ||
+        removedImages[field]
+    );
+
+  const isDirty =
+    useMemo(
+      () =>
+        JSON.stringify(
+          settings
+        ) !==
+          JSON.stringify(
+            initialSettings
+          ) ||
+        hasPendingImageChanges,
+      [
+        hasPendingImageChanges,
+        initialSettings,
+        settings,
+      ]
+    );
+
+  const clearLocalPreviews =
+    useCallback(() => {
+      objectUrlsRef.current.forEach(
+        (url) => {
+          URL.revokeObjectURL(
+            url
+          );
+        }
+      );
+
+      objectUrlsRef.current.clear();
+      setPreviewUrls({});
+      setSelectedFiles({});
+    }, []);
+
+  useEffect(() => {
+    return () => {
+      objectUrlsRef.current.forEach(
+        (url) => {
+          URL.revokeObjectURL(
+            url
+          );
+        }
+      );
+
+      objectUrlsRef.current.clear();
+    };
+  }, []);
 
   const loadSettings =
     useCallback(
@@ -425,7 +754,10 @@ export default function AdminSettingsPage() {
           } = await supabase
             .from("settings")
             .select("*")
-            .limit(1)
+            .eq(
+              "setting_key",
+              SETTINGS_KEY
+            )
             .maybeSingle();
 
           if (error) {
@@ -439,7 +771,9 @@ export default function AdminSettingsPage() {
               );
 
             setSettings(row);
-            setInitialSettings(row);
+            setInitialSettings(
+              row
+            );
             return;
           }
 
@@ -464,8 +798,12 @@ export default function AdminSettingsPage() {
             );
 
           setSettings(row);
-          setInitialSettings(row);
-        } catch (error: unknown) {
+          setInitialSettings(
+            row
+          );
+        } catch (
+          error: unknown
+        ) {
           setMessage({
             type: "error",
             text: getErrorMessage(
@@ -534,8 +872,8 @@ export default function AdminSettingsPage() {
 
           const validatedRates:
             ExchangeRates = {
-              INR: 1,
-            };
+            INR: 1,
+          };
 
           AVAILABLE_CURRENCIES.forEach(
             (currency) => {
@@ -575,7 +913,9 @@ export default function AdminSettingsPage() {
             result.source ??
               "Live provider"
           );
-        } catch (error: unknown) {
+        } catch (
+          error: unknown
+        ) {
           setRatesError(
             getErrorMessage(
               error,
@@ -597,12 +937,324 @@ export default function AdminSettingsPage() {
     loadSettings,
   ]);
 
-  async function saveSettings():
-    Promise<void> {
-    if (!settings.id) {
+  function updateField<
+    K extends keyof SettingsRow,
+  >(
+    key: K,
+    value: SettingsRow[K]
+  ): void {
+    setSettings(
+      (previous) => ({
+        ...previous,
+        [key]: value,
+      })
+    );
+
+    setMessage(null);
+  }
+
+  function toggleCurrency(
+    currency: CurrencyCode
+  ): void {
+    if (
+      currency === "INR"
+    ) {
+      return;
+    }
+
+    setSettings(
+      (previous) => {
+        const isSelected =
+          previous.supported_currencies.includes(
+            currency
+          );
+
+        return {
+          ...previous,
+          supported_currencies:
+            isSelected
+              ? previous.supported_currencies.filter(
+                  (item) =>
+                    item !==
+                    currency
+                )
+              : [
+                  ...previous.supported_currencies,
+                  currency,
+                ],
+        };
+      }
+    );
+
+    setMessage(null);
+  }
+
+  function getVisibleImageUrl(
+    field: ImageField
+  ): string {
+    if (
+      removedImages[field]
+    ) {
+      return "";
+    }
+
+    return (
+      previewUrls[field] ??
+      settings[field]
+    );
+  }
+
+  function handleImageSelect(
+    field: ImageField,
+    event:
+      ChangeEvent<HTMLInputElement>
+  ): void {
+    const file =
+      event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    const allowedTypes =
+      new Set([
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/svg+xml",
+      ]);
+
+    if (
+      !allowedTypes.has(
+        file.type
+      )
+    ) {
       setMessage({
         type: "error",
-        text: "Settings could not be saved because the settings row is missing.",
+        text: "Choose a JPG, PNG, WebP or SVG image.",
+      });
+      return;
+    }
+
+    if (
+      file.size >
+      MAX_IMAGE_SIZE
+    ) {
+      setMessage({
+        type: "error",
+        text: "Images must be 8 MB or smaller.",
+      });
+      return;
+    }
+
+    const existingPreview =
+      previewUrls[field];
+
+    if (
+      existingPreview
+    ) {
+      URL.revokeObjectURL(
+        existingPreview
+      );
+
+      objectUrlsRef.current.delete(
+        existingPreview
+      );
+    }
+
+    const objectUrl =
+      URL.createObjectURL(
+        file
+      );
+
+    objectUrlsRef.current.add(
+      objectUrl
+    );
+
+    setSelectedFiles(
+      (previous) => ({
+        ...previous,
+        [field]: file,
+      })
+    );
+
+    setPreviewUrls(
+      (previous) => ({
+        ...previous,
+        [field]: objectUrl,
+      })
+    );
+
+    setRemovedImages(
+      (previous) => ({
+        ...previous,
+        [field]: false,
+      })
+    );
+
+    setMessage(null);
+  }
+
+  function handleRemoveImage(
+    field: ImageField
+  ): void {
+    const existingPreview =
+      previewUrls[field];
+
+    if (
+      existingPreview
+    ) {
+      URL.revokeObjectURL(
+        existingPreview
+      );
+
+      objectUrlsRef.current.delete(
+        existingPreview
+      );
+    }
+
+    setSelectedFiles(
+      (previous) => {
+        const next = {
+          ...previous,
+        };
+
+        delete next[field];
+
+        return next;
+      }
+    );
+
+    setPreviewUrls(
+      (previous) => {
+        const next = {
+          ...previous,
+        };
+
+        delete next[field];
+
+        return next;
+      }
+    );
+
+    setRemovedImages(
+      (previous) => ({
+        ...previous,
+        [field]: true,
+      })
+    );
+
+    setMessage(null);
+  }
+
+  async function uploadImage(
+    field: ImageField,
+    file: File
+  ): Promise<string> {
+    const filePath =
+      `settings/${field}/${createSafeFileName(
+        file
+      )}`;
+
+    const {
+      error: uploadError,
+    } = await supabase.storage
+      .from(
+        STORAGE_BUCKET
+      )
+      .upload(
+        filePath,
+        file,
+        {
+          cacheControl:
+            "3600",
+          contentType:
+            file.type,
+          upsert: false,
+        }
+      );
+
+    if (
+      uploadError
+    ) {
+      throw uploadError;
+    }
+
+    const {
+      data: publicUrlData,
+    } = supabase.storage
+      .from(
+        STORAGE_BUCKET
+      )
+      .getPublicUrl(
+        filePath
+      );
+
+    if (
+      !publicUrlData.publicUrl
+    ) {
+      throw new Error(
+        "The image uploaded, but its public URL could not be created."
+      );
+    }
+
+    return publicUrlData.publicUrl;
+  }
+
+  async function deleteStoredImage(
+    publicUrl: string
+  ): Promise<void> {
+    const objectPath =
+      getStoredObjectPath(
+        publicUrl
+      );
+
+    if (
+      !objectPath
+    ) {
+      return;
+    }
+
+    const {
+      error,
+    } = await supabase.storage
+      .from(
+        STORAGE_BUCKET
+      )
+      .remove([
+        objectPath,
+      ]);
+
+    if (
+      error
+    ) {
+      console.error(
+        "Unable to delete previous settings image:",
+        error
+      );
+    }
+  }
+
+  async function saveSettings():
+    Promise<void> {
+    if (
+      !settings.id ||
+      saving
+    ) {
+      return;
+    }
+
+    const storeName =
+      settings.store_name.trim();
+
+    if (
+      !storeName
+    ) {
+      setMessage({
+        type: "error",
+        text: "Store name is required.",
       });
       return;
     }
@@ -610,7 +1262,62 @@ export default function AdminSettingsPage() {
     setSaving(true);
     setMessage(null);
 
+    const uploadedUrls:
+      Partial<
+        Record<
+          ImageField,
+          string
+        >
+      > = {};
+
     try {
+      const nextImageUrls:
+        Record<
+          ImageField,
+          string
+        > = {
+        logo_url:
+          removedImages.logo_url
+            ? ""
+            : settings.logo_url.trim(),
+        favicon_url:
+          removedImages.favicon_url
+            ? ""
+            : settings.favicon_url.trim(),
+        seo_image_url:
+          removedImages.seo_image_url
+            ? ""
+            : settings.seo_image_url.trim(),
+      };
+
+      for (
+        const field of
+        IMAGE_FIELDS
+      ) {
+        const file =
+          selectedFiles[
+            field
+          ];
+
+        if (
+          file
+        ) {
+          const publicUrl =
+            await uploadImage(
+              field,
+              file
+            );
+
+          uploadedUrls[
+            field
+          ] = publicUrl;
+
+          nextImageUrls[
+            field
+          ] = publicUrl;
+        }
+      }
+
       const supportedCurrencies =
         Array.from(
           new Set<CurrencyCode>([
@@ -621,8 +1328,10 @@ export default function AdminSettingsPage() {
 
       const payload:
         EditableSettings = {
+        setting_key:
+          SETTINGS_KEY,
         store_name:
-          settings.store_name.trim(),
+          storeName,
         tagline:
           settings.tagline.trim(),
         whatsapp:
@@ -631,23 +1340,58 @@ export default function AdminSettingsPage() {
           settings.instagram.trim(),
         email:
           settings.email.trim(),
-        hero_title:
-          settings.hero_title.trim(),
-        hero_subtitle:
-          settings.hero_subtitle.trim(),
+        phone:
+          settings.phone.trim(),
+        address:
+          settings.address.trim(),
+        facebook_url:
+          settings.facebook_url.trim(),
+        x_url:
+          settings.x_url.trim(),
+        youtube_url:
+          settings.youtube_url.trim(),
+        linkedin_url:
+          settings.linkedin_url.trim(),
+        pinterest_url:
+          settings.pinterest_url.trim(),
         announcement_bar:
           settings.announcement_bar.trim(),
         shipping_message:
           settings.shipping_message.trim(),
         footer_text:
           settings.footer_text.trim(),
+        newsletter_heading:
+          settings.newsletter_heading.trim(),
+        newsletter_description:
+          settings.newsletter_description.trim(),
+        newsletter_button_text:
+          settings.newsletter_button_text.trim() ||
+          "Subscribe",
+        newsletter_disclaimer:
+          settings.newsletter_disclaimer.trim(),
         logo_url:
-          settings.logo_url.trim(),
-        base_currency: "INR",
+          nextImageUrls.logo_url,
+        favicon_url:
+          nextImageUrls.favicon_url,
+        seo_title:
+          settings.seo_title.trim() ||
+          storeName,
+        seo_description:
+          settings.seo_description.trim(),
+        seo_image_url:
+          nextImageUrls.seo_image_url,
+        privacy_url:
+          settings.privacy_url.trim() ||
+          "/privacy",
+        terms_url:
+          settings.terms_url.trim() ||
+          "/terms",
+        base_currency:
+          settings.base_currency,
         supported_currencies:
           supportedCurrencies,
         auto_update_exchange_rates:
-          true,
+          settings.auto_update_exchange_rates,
         india_shipping_cost:
           Math.max(
             0,
@@ -683,15 +1427,23 @@ export default function AdminSettingsPage() {
         error,
       } = await supabase
         .from("settings")
-        .update(payload)
+        .update(
+          payload
+        )
         .eq(
           "id",
           settings.id
         )
+        .eq(
+          "setting_key",
+          SETTINGS_KEY
+        )
         .select("*")
         .single();
 
-      if (error) {
+      if (
+        error
+      ) {
         throw error;
       }
 
@@ -700,14 +1452,60 @@ export default function AdminSettingsPage() {
           data as SettingsDatabaseRow
         );
 
+      for (
+        const field of
+        IMAGE_FIELDS
+      ) {
+        const previousUrl =
+          initialSettings[
+            field
+          ];
+
+        const nextUrl =
+          updated[field];
+
+        if (
+          previousUrl &&
+          previousUrl !==
+            nextUrl
+        ) {
+          await deleteStoredImage(
+            previousUrl
+          );
+        }
+      }
+
+      clearLocalPreviews();
+      setRemovedImages(
+        EMPTY_REMOVED_IMAGES
+      );
       setSettings(updated);
-      setInitialSettings(updated);
+      setInitialSettings(
+        updated
+      );
 
       setMessage({
         type: "success",
-        text: "Settings saved successfully.",
+        text: "Global store settings saved successfully.",
       });
-    } catch (error: unknown) {
+    } catch (
+      error: unknown
+    ) {
+      for (
+        const publicUrl of
+        Object.values(
+          uploadedUrls
+        )
+      ) {
+        if (
+          publicUrl
+        ) {
+          await deleteStoredImage(
+            publicUrl
+          );
+        }
+      }
+
       setMessage({
         type: "error",
         text: getErrorMessage(
@@ -720,62 +1518,21 @@ export default function AdminSettingsPage() {
     }
   }
 
-  function resetForm(): void {
+  function resetForm():
+    void {
+    clearLocalPreviews();
+    setRemovedImages(
+      EMPTY_REMOVED_IMAGES
+    );
     setSettings(
       initialSettings
     );
     setMessage(null);
   }
 
-  function updateField<
-    K extends keyof SettingsRow,
-  >(
-    key: K,
-    value: SettingsRow[K]
-  ): void {
-    setSettings(
-      (previous) => ({
-        ...previous,
-        [key]: value,
-      })
-    );
-  }
-
-  function toggleCurrency(
-    currency: CurrencyCode
-  ): void {
-    if (
-      currency === "INR"
-    ) {
-      return;
-    }
-
-    setSettings(
-      (previous) => {
-        const isSelected =
-          previous.supported_currencies.includes(
-            currency
-          );
-
-        return {
-          ...previous,
-          supported_currencies:
-            isSelected
-              ? previous.supported_currencies.filter(
-                  (item) =>
-                    item !==
-                    currency
-                )
-              : [
-                  ...previous.supported_currencies,
-                  currency,
-                ],
-        };
-      }
-    );
-  }
-
-  if (pageLoading) {
+  if (
+    pageLoading
+  ) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#F8F4EF] p-8">
         <div className="flex flex-col items-center gap-5">
@@ -792,20 +1549,32 @@ export default function AdminSettingsPage() {
   return (
     <main className="min-h-screen bg-[#F8F4EF] px-5 py-10 sm:px-6 md:px-10">
       <div className="mx-auto max-w-7xl space-y-8">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#8B6B5B]">
-            Administration
-          </p>
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#8B6B5B]">
+              Administration
+            </p>
 
-          <h1 className="mt-3 font-serif text-4xl font-semibold text-[#4B2E2E]">
-            Store Settings
-          </h1>
+            <h1 className="mt-3 font-serif text-4xl font-semibold text-[#4B2E2E]">
+              Global Store Settings
+            </h1>
 
-          <p className="mt-3 max-w-3xl leading-7 text-[#8B6B5B]">
-            Manage Rooh &amp; Rivet store information,
-            live currency display, shipping and customer-facing
-            content.
-          </p>
+            <p className="mt-3 max-w-3xl leading-7 text-[#8B6B5B]">
+              Manage global branding, contact details, footer, newsletter, SEO, currencies and shipping rules. Homepage, About and Contact page content remains under Content Management.
+            </p>
+          </div>
+
+          <div
+            className={`w-fit rounded-full px-4 py-2 text-sm font-semibold ${
+              isDirty
+                ? "bg-amber-100 text-amber-800"
+                : "bg-emerald-100 text-emerald-800"
+            }`}
+          >
+            {isDirty
+              ? "Unsaved changes"
+              : "All changes saved"}
+          </div>
         </div>
 
         {message ? (
@@ -822,6 +1591,496 @@ export default function AdminSettingsPage() {
         ) : null}
 
         <SettingsSection
+          icon={
+            <Store size={22} />
+          }
+          title="Store Identity"
+          description="Global brand information shown throughout the website."
+        >
+          <div className="grid gap-6 md:grid-cols-2">
+            <Field
+              id="store-name"
+              label="Store Name"
+              value={
+                settings.store_name
+              }
+              onChange={(value) =>
+                updateField(
+                  "store_name",
+                  value
+                )
+              }
+            />
+
+            <Field
+              id="tagline"
+              label="Tagline"
+              value={
+                settings.tagline
+              }
+              onChange={(value) =>
+                updateField(
+                  "tagline",
+                  value
+                )
+              }
+            />
+          </div>
+
+          <div className="mt-8 grid gap-6 lg:grid-cols-3">
+            {IMAGE_FIELDS.map(
+              (field) => (
+                <ImageUploadCard
+                  key={field}
+                  field={field}
+                  visibleUrl={
+                    getVisibleImageUrl(
+                      field
+                    )
+                  }
+                  selectedFile={
+                    selectedFiles[
+                      field
+                    ]
+                  }
+                  removed={
+                    removedImages[
+                      field
+                    ]
+                  }
+                  onSelect={(
+                    event
+                  ) =>
+                    handleImageSelect(
+                      field,
+                      event
+                    )
+                  }
+                  onRemove={() =>
+                    handleRemoveImage(
+                      field
+                    )
+                  }
+                  disabled={saving}
+                />
+              )
+            )}
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          icon={
+            <MessageCircle
+              size={22}
+            />
+          }
+          title="Contact & Social Details"
+          description="Global customer-service details and social profiles used by the navbar, footer and customer touchpoints."
+        >
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <Field
+              id="email"
+              label="Customer Service Email"
+              type="email"
+              icon={
+                <Mail size={17} />
+              }
+              value={
+                settings.email
+              }
+              onChange={(value) =>
+                updateField(
+                  "email",
+                  value
+                )
+              }
+            />
+
+            <Field
+              id="phone"
+              label="Phone Number"
+              type="tel"
+              icon={
+                <Phone size={17} />
+              }
+              value={
+                settings.phone
+              }
+              onChange={(value) =>
+                updateField(
+                  "phone",
+                  value
+                )
+              }
+            />
+
+            <Field
+              id="whatsapp"
+              label="WhatsApp Number"
+              type="tel"
+              icon={
+                <MessageCircle
+                  size={17}
+                />
+              }
+              value={
+                settings.whatsapp
+              }
+              onChange={(value) =>
+                updateField(
+                  "whatsapp",
+                  value
+                )
+              }
+            />
+
+            <div className="md:col-span-2 lg:col-span-3">
+              <TextArea
+                id="address"
+                label="Business Address"
+                icon={
+                  <MapPin size={17} />
+                }
+                rows={3}
+                value={
+                  settings.address
+                }
+                onChange={(value) =>
+                  updateField(
+                    "address",
+                    value
+                  )
+                }
+              />
+            </div>
+
+            <Field
+              id="instagram"
+              label="Instagram URL or Username"
+              icon={
+                <Link2 size={17} />
+              }
+              value={
+                settings.instagram
+              }
+              onChange={(value) =>
+                updateField(
+                  "instagram",
+                  value
+                )
+              }
+            />
+
+            <Field
+              id="facebook-url"
+              label="Facebook URL"
+              type="url"
+              icon={
+                <Link2 size={17} />
+              }
+              value={
+                settings.facebook_url
+              }
+              onChange={(value) =>
+                updateField(
+                  "facebook_url",
+                  value
+                )
+              }
+            />
+
+            <Field
+              id="x-url"
+              label="X URL"
+              type="url"
+              icon={
+                <Link2 size={17} />
+              }
+              value={
+                settings.x_url
+              }
+              onChange={(value) =>
+                updateField(
+                  "x_url",
+                  value
+                )
+              }
+            />
+
+            <Field
+              id="youtube-url"
+              label="YouTube URL"
+              type="url"
+              icon={
+                <Link2 size={17} />
+              }
+              value={
+                settings.youtube_url
+              }
+              onChange={(value) =>
+                updateField(
+                  "youtube_url",
+                  value
+                )
+              }
+            />
+
+            <Field
+              id="linkedin-url"
+              label="LinkedIn URL"
+              type="url"
+              icon={
+                <Link2 size={17} />
+              }
+              value={
+                settings.linkedin_url
+              }
+              onChange={(value) =>
+                updateField(
+                  "linkedin_url",
+                  value
+                )
+              }
+            />
+
+            <Field
+              id="pinterest-url"
+              label="Pinterest URL"
+              type="url"
+              icon={
+                <Link2 size={17} />
+              }
+              value={
+                settings.pinterest_url
+              }
+              onChange={(value) =>
+                updateField(
+                  "pinterest_url",
+                  value
+                )
+              }
+            />
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          icon={
+            <Megaphone
+              size={22}
+            />
+          }
+          title="Global Customer Messages"
+          description="Messages that can appear across the storefront."
+        >
+          <div className="grid gap-6">
+            <Field
+              id="announcement-bar"
+              label="Announcement Bar"
+              value={
+                settings.announcement_bar
+              }
+              onChange={(value) =>
+                updateField(
+                  "announcement_bar",
+                  value
+                )
+              }
+            />
+
+            <TextArea
+              id="shipping-message"
+              label="Shipping Message"
+              value={
+                settings.shipping_message
+              }
+              onChange={(value) =>
+                updateField(
+                  "shipping_message",
+                  value
+                )
+              }
+            />
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          icon={
+            <Newspaper
+              size={22}
+            />
+          }
+          title="Footer & Newsletter"
+          description="Global footer description, newsletter copy and legal destinations."
+        >
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <TextArea
+                id="footer-text"
+                label="Footer Brand Description"
+                value={
+                  settings.footer_text
+                }
+                onChange={(value) =>
+                  updateField(
+                    "footer_text",
+                    value
+                  )
+                }
+              />
+            </div>
+
+            <Field
+              id="newsletter-heading"
+              label="Newsletter Heading"
+              value={
+                settings.newsletter_heading
+              }
+              onChange={(value) =>
+                updateField(
+                  "newsletter_heading",
+                  value
+                )
+              }
+            />
+
+            <Field
+              id="newsletter-button-text"
+              label="Newsletter Button Text"
+              value={
+                settings.newsletter_button_text
+              }
+              onChange={(value) =>
+                updateField(
+                  "newsletter_button_text",
+                  value
+                )
+              }
+            />
+
+            <div className="md:col-span-2">
+              <TextArea
+                id="newsletter-description"
+                label="Newsletter Description"
+                value={
+                  settings.newsletter_description
+                }
+                onChange={(value) =>
+                  updateField(
+                    "newsletter_description",
+                    value
+                  )
+                }
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <TextArea
+                id="newsletter-disclaimer"
+                label="Newsletter Disclaimer"
+                rows={3}
+                value={
+                  settings.newsletter_disclaimer
+                }
+                onChange={(value) =>
+                  updateField(
+                    "newsletter_disclaimer",
+                    value
+                  )
+                }
+              />
+            </div>
+
+            <Field
+              id="privacy-url"
+              label="Privacy Policy Link"
+              value={
+                settings.privacy_url
+              }
+              onChange={(value) =>
+                updateField(
+                  "privacy_url",
+                  value
+                )
+              }
+            />
+
+            <Field
+              id="terms-url"
+              label="Terms & Conditions Link"
+              value={
+                settings.terms_url
+              }
+              onChange={(value) =>
+                updateField(
+                  "terms_url",
+                  value
+                )
+              }
+            />
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          icon={
+            <Search size={22} />
+          }
+          title="Search & Social Metadata"
+          description="Default metadata used by search engines and social-sharing previews."
+        >
+          <div className="grid gap-6">
+            <Field
+              id="seo-title"
+              label="Default SEO Title"
+              value={
+                settings.seo_title
+              }
+              onChange={(value) =>
+                updateField(
+                  "seo_title",
+                  value
+                )
+              }
+            />
+
+            <TextArea
+              id="seo-description"
+              label="Default SEO Description"
+              rows={4}
+              value={
+                settings.seo_description
+              }
+              onChange={(value) =>
+                updateField(
+                  "seo_description",
+                  value
+                )
+              }
+            />
+
+            <div className="rounded-2xl border border-[#E3D3CA] bg-[#FBF8F5] p-5 text-sm leading-7 text-[#6F5146]">
+              SEO title length:{" "}
+              <strong>
+                {
+                  settings.seo_title.length
+                }
+              </strong>
+              . SEO description length:{" "}
+              <strong>
+                {
+                  settings.seo_description.length
+                }
+              </strong>
+              .
+            </div>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          icon={
+            <CircleDollarSign
+              size={22}
+            />
+          }
           title="Currency Settings"
           description="Product prices remain stored in INR. Other currencies are display conversions using the latest available reference rates."
         >
@@ -848,9 +2107,7 @@ export default function AdminSettingsPage() {
               </div>
 
               <p className="mt-3 text-sm leading-6 text-[#8B6B5B]">
-                Changing the base currency is disabled because all
-                catalogue prices, shipping rules and order totals are
-                stored in INR.
+                Catalogue prices, shipping rules and order totals remain stored in INR.
               </p>
             </div>
 
@@ -861,16 +2118,34 @@ export default function AdminSettingsPage() {
                   className="mt-0.5 shrink-0 text-emerald-700"
                 />
 
-                <div>
+                <div className="flex-1">
                   <p className="font-semibold text-emerald-800">
-                    Automatic Exchange Rates Enabled
+                    Automatic Exchange Rates
                   </p>
 
                   <p className="mt-2 text-sm leading-6 text-emerald-700">
-                    Live reference rates are fetched automatically and
-                    cached for performance. Fixed manual conversion
-                    rates are not used.
+                    Enable live reference-rate conversion for supported display currencies.
                   </p>
+
+                  <label className="mt-4 inline-flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={
+                        settings.auto_update_exchange_rates
+                      }
+                      onChange={(event) =>
+                        updateField(
+                          "auto_update_exchange_rates",
+                          event.target.checked
+                        )
+                      }
+                      className="h-5 w-5 accent-[#5A2D2D]"
+                    />
+
+                    <span className="text-sm font-semibold text-emerald-800">
+                      Enabled
+                    </span>
+                  </label>
                 </div>
               </div>
             </div>
@@ -883,7 +2158,8 @@ export default function AdminSettingsPage() {
                   </p>
 
                   <p className="mt-1 text-sm text-[#8B6B5B]">
-                    Source: {ratesSource}
+                    Source:{" "}
+                    {ratesSource}
                   </p>
                 </div>
 
@@ -894,7 +2170,9 @@ export default function AdminSettingsPage() {
                       true
                     )
                   }
-                  disabled={ratesLoading}
+                  disabled={
+                    ratesLoading
+                  }
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#5A2D2D] bg-white px-5 py-3 font-semibold text-[#5A2D2D] transition hover:bg-[#F8F4EF] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {ratesLoading ? (
@@ -921,21 +2199,14 @@ export default function AdminSettingsPage() {
               ) : (
                 <div className="rounded-2xl border border-[#E3D3CA] bg-white p-5">
                   <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-center gap-3">
-                      <CircleDollarSign
-                        size={22}
-                        className="text-[#5A2D2D]"
-                      />
+                    <div>
+                      <p className="font-semibold text-[#4B2E2E]">
+                        Current INR Reference Rates
+                      </p>
 
-                      <div>
-                        <p className="font-semibold text-[#4B2E2E]">
-                          Current INR Reference Rates
-                        </p>
-
-                        <p className="mt-1 text-sm text-[#8B6B5B]">
-                          1 INR equals the values shown below.
-                        </p>
-                      </div>
+                      <p className="mt-1 text-sm text-[#8B6B5B]">
+                        1 INR equals the values shown below.
+                      </p>
                     </div>
 
                     <div className="flex items-center gap-2 text-sm text-[#8B6B5B]">
@@ -1071,175 +2342,11 @@ export default function AdminSettingsPage() {
         </SettingsSection>
 
         <SettingsSection
-          title="Store Information"
-        >
-          <div className="grid gap-6 md:grid-cols-2">
-            <Field
-              id="store-name"
-              label="Store Name"
-              value={
-                settings.store_name
-              }
-              onChange={(value) =>
-                updateField(
-                  "store_name",
-                  value
-                )
-              }
-            />
-
-            <Field
-              id="tagline"
-              label="Tagline"
-              value={
-                settings.tagline
-              }
-              onChange={(value) =>
-                updateField(
-                  "tagline",
-                  value
-                )
-              }
-            />
-
-            <div className="md:col-span-2">
-              <Field
-                id="logo-url"
-                label="Logo URL"
-                type="url"
-                value={
-                  settings.logo_url
-                }
-                onChange={(value) =>
-                  updateField(
-                    "logo_url",
-                    value
-                  )
-                }
-              />
-            </div>
-
-            {settings.logo_url.trim() ? (
-              <div className="md:col-span-2">
-                <p className="mb-3 text-sm font-semibold text-[#4B2E2E]">
-                  Logo Preview
-                </p>
-
-                <div className="flex min-h-32 items-center justify-center rounded-2xl border border-[#E3D3CA] bg-[#FBF8F5] p-6">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={
-                      settings.logo_url
-                    }
-                    alt="Rooh & Rivet logo preview"
-                    className="max-h-24 max-w-full object-contain"
-                  />
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </SettingsSection>
-
-        <SettingsSection
-          title="Contact Information"
-        >
-          <div className="grid gap-6 md:grid-cols-3">
-            <Field
-              id="whatsapp"
-              label="WhatsApp Number"
-              type="tel"
-              value={
-                settings.whatsapp
-              }
-              onChange={(value) =>
-                updateField(
-                  "whatsapp",
-                  value
-                )
-              }
-            />
-
-            <Field
-              id="instagram"
-              label="Instagram Handle"
-              value={
-                settings.instagram
-              }
-              onChange={(value) =>
-                updateField(
-                  "instagram",
-                  value
-                )
-              }
-            />
-
-            <Field
-              id="email"
-              label="Email Address"
-              type="email"
-              value={
-                settings.email
-              }
-              onChange={(value) =>
-                updateField(
-                  "email",
-                  value
-                )
-              }
-            />
-          </div>
-        </SettingsSection>
-
-        <SettingsSection
-          title="Homepage Content"
-        >
-          <div className="grid gap-6">
-            <Field
-              id="hero-title"
-              label="Hero Title"
-              value={
-                settings.hero_title
-              }
-              onChange={(value) =>
-                updateField(
-                  "hero_title",
-                  value
-                )
-              }
-            />
-
-            <TextArea
-              id="hero-subtitle"
-              label="Hero Subtitle"
-              value={
-                settings.hero_subtitle
-              }
-              onChange={(value) =>
-                updateField(
-                  "hero_subtitle",
-                  value
-                )
-              }
-            />
-
-            <Field
-              id="announcement-bar"
-              label="Announcement Bar"
-              value={
-                settings.announcement_bar
-              }
-              onChange={(value) =>
-                updateField(
-                  "announcement_bar",
-                  value
-                )
-              }
-            />
-          </div>
-        </SettingsSection>
-
-        <SettingsSection
-          title="Shipping Settings"
+          icon={
+            <Truck size={22} />
+          }
+          title="Shipping Rules"
+          description="Shipping values used during checkout and in customer-facing shipping messages."
         >
           <div className="grid gap-6 md:grid-cols-2">
             <NumberField
@@ -1314,22 +2421,6 @@ export default function AdminSettingsPage() {
                 )
               }
             />
-
-            <div className="md:col-span-2">
-              <TextArea
-                id="shipping-message"
-                label="Shipping Message"
-                value={
-                  settings.shipping_message
-                }
-                onChange={(value) =>
-                  updateField(
-                    "shipping_message",
-                    value
-                  )
-                }
-              />
-            </div>
           </div>
 
           <div className="mt-6 rounded-2xl border border-[#E8D8CF] bg-[#FBF8F5] p-5 text-sm leading-7 text-[#6F5146]">
@@ -1363,55 +2454,55 @@ export default function AdminSettingsPage() {
           </div>
         </SettingsSection>
 
-        <SettingsSection
-          title="Footer Content"
-        >
-          <TextArea
-            id="footer-text"
-            label="Footer Text"
-            value={
-              settings.footer_text
-            }
-            onChange={(value) =>
-              updateField(
-                "footer_text",
-                value
-              )
-            }
-          />
-        </SettingsSection>
+        <div className="sticky bottom-4 z-20 rounded-3xl border border-[#E8DDD3] bg-white/95 p-4 shadow-xl backdrop-blur">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-[#8B6B5B]">
+              {isDirty
+                ? "You have unsaved settings changes."
+                : "Your global settings are up to date."}
+            </p>
 
-        <div className="flex flex-col gap-4 sm:flex-row">
-          <button
-            type="button"
-            onClick={() =>
-              void saveSettings()
-            }
-            disabled={saving}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#5A2D2D] px-8 py-4 font-semibold text-white transition hover:bg-[#472323] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? (
-              <Loader2
-                size={18}
-                className="animate-spin"
-              />
-            ) : (
-              <Save size={18} />
-            )}
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={
+                  resetForm
+                }
+                disabled={
+                  saving ||
+                  !isDirty
+                }
+                className="rounded-2xl border border-[#D9C6BC] bg-white px-7 py-3 font-semibold text-[#5A2D2D] transition hover:bg-[#FBF7F4] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Reset
+              </button>
 
-            {saving
-              ? "Saving..."
-              : "Save Changes"}
-          </button>
+              <button
+                type="button"
+                onClick={() =>
+                  void saveSettings()
+                }
+                disabled={
+                  saving ||
+                  !isDirty
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#5A2D2D] px-8 py-3 font-semibold text-white transition hover:bg-[#472323] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving ? (
+                  <Loader2
+                    size={18}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <Save size={18} />
+                )}
 
-          <button
-            type="button"
-            onClick={resetForm}
-            disabled={saving}
-            className="rounded-2xl border border-[#D9C6BC] bg-white px-8 py-4 font-semibold text-[#5A2D2D] transition hover:bg-[#FBF7F4] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Reset
-          </button>
+                {saving
+                  ? "Saving..."
+                  : "Save Changes"}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </main>
@@ -1419,28 +2510,36 @@ export default function AdminSettingsPage() {
 }
 
 type SettingsSectionProps = {
+  icon: ReactNode;
   title: string;
   description?: string;
   children: ReactNode;
 };
 
 function SettingsSection({
+  icon,
   title,
   description,
   children,
 }: SettingsSectionProps) {
   return (
     <section className="rounded-3xl border border-[#E8DDD3] bg-white p-6 shadow-sm sm:p-8">
-      <div className="mb-6">
-        <h2 className="font-serif text-2xl font-semibold text-[#4B2E2E]">
-          {title}
-        </h2>
+      <div className="mb-6 flex items-start gap-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#F5E7E0] text-[#5A2D2D]">
+          {icon}
+        </div>
 
-        {description ? (
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-[#8B6B5B]">
-            {description}
-          </p>
-        ) : null}
+        <div>
+          <h2 className="font-serif text-2xl font-semibold text-[#4B2E2E]">
+            {title}
+          </h2>
+
+          {description ? (
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[#8B6B5B]">
+              {description}
+            </p>
+          ) : null}
+        </div>
       </div>
 
       {children}
@@ -1460,6 +2559,7 @@ type FieldProps = {
     | "email"
     | "url"
     | "tel";
+  icon?: ReactNode;
 };
 
 function Field({
@@ -1468,6 +2568,7 @@ function Field({
   value,
   onChange,
   type = "text",
+  icon,
 }: FieldProps) {
   return (
     <div>
@@ -1478,17 +2579,29 @@ function Field({
         {label}
       </label>
 
-      <input
-        id={id}
-        type={type}
-        value={value}
-        onChange={(event) =>
-          onChange(
-            event.target.value
-          )
-        }
-        className="w-full rounded-2xl border border-[#E3D3CA] px-4 py-3 text-[#4B2E2E] outline-none transition placeholder:text-[#B59A8E] focus:border-[#5A2D2D] focus:ring-2 focus:ring-[#5A2D2D]/10"
-      />
+      <div className="relative">
+        {icon ? (
+          <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#9A7B70]">
+            {icon}
+          </div>
+        ) : null}
+
+        <input
+          id={id}
+          type={type}
+          value={value}
+          onChange={(event) =>
+            onChange(
+              event.target.value
+            )
+          }
+          className={`w-full rounded-2xl border border-[#E3D3CA] px-4 py-3 text-[#4B2E2E] outline-none transition placeholder:text-[#B59A8E] focus:border-[#5A2D2D] focus:ring-2 focus:ring-[#5A2D2D]/10 ${
+            icon
+              ? "pl-11"
+              : ""
+          }`}
+        />
+      </div>
     </div>
   );
 }
@@ -1555,6 +2668,8 @@ type TextAreaProps = {
   onChange: (
     value: string
   ) => void;
+  rows?: number;
+  icon?: ReactNode;
 };
 
 function TextArea({
@@ -1562,19 +2677,22 @@ function TextArea({
   label,
   value,
   onChange,
+  rows = 4,
+  icon,
 }: TextAreaProps) {
   return (
     <div>
       <label
         htmlFor={id}
-        className="mb-2 block text-sm font-semibold text-[#4B2E2E]"
+        className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#4B2E2E]"
       >
+        {icon}
         {label}
       </label>
 
       <textarea
         id={id}
-        rows={4}
+        rows={rows}
         value={value}
         onChange={(event) =>
           onChange(
@@ -1584,5 +2702,128 @@ function TextArea({
         className="w-full resize-y rounded-2xl border border-[#E3D3CA] px-4 py-3 text-[#4B2E2E] outline-none transition placeholder:text-[#B59A8E] focus:border-[#5A2D2D] focus:ring-2 focus:ring-[#5A2D2D]/10"
       />
     </div>
+  );
+}
+
+type ImageUploadCardProps = {
+  field: ImageField;
+  visibleUrl: string;
+  selectedFile:
+    | File
+    | undefined;
+  removed: boolean;
+  onSelect: (
+    event:
+      ChangeEvent<HTMLInputElement>
+  ) => void;
+  onRemove: () => void;
+  disabled: boolean;
+};
+
+function ImageUploadCard({
+  field,
+  visibleUrl,
+  selectedFile,
+  removed,
+  onSelect,
+  onRemove,
+  disabled,
+}: ImageUploadCardProps) {
+  const details =
+    IMAGE_LABELS[field];
+
+  return (
+    <article className="overflow-hidden rounded-2xl border border-[#E3D3CA] bg-[#FBF8F5]">
+      <div className="p-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#5A2D2D]">
+            <ImageIcon
+              size={20}
+            />
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-[#4B2E2E]">
+              {details.label}
+            </h3>
+
+            <p className="mt-1 text-sm leading-6 text-[#8B6B5B]">
+              {details.description}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 flex min-h-40 items-center justify-center overflow-hidden rounded-xl border border-[#E3D3CA] bg-white p-4">
+          {visibleUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={visibleUrl}
+              alt={`${details.label} preview`}
+              className="max-h-36 max-w-full object-contain"
+            />
+          ) : (
+            <div className="text-center text-[#9A7B70]">
+              <ImageIcon
+                size={34}
+                className="mx-auto"
+              />
+
+              <p className="mt-3 text-sm">
+                {removed
+                  ? "Image will be removed when saved"
+                  : "No image uploaded"}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <p className="mt-3 text-xs leading-5 text-[#8B6B5B]">
+          {details.recommended}
+        </p>
+
+        {selectedFile ? (
+          <p className="mt-2 truncate text-xs font-medium text-[#5A2D2D]">
+            Selected:{" "}
+            {selectedFile.name}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="flex flex-col gap-3 border-t border-[#E3D3CA] bg-white p-4">
+        <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#5A2D2D] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#472323]">
+          <Upload size={17} />
+
+          {visibleUrl
+            ? "Replace Image"
+            : "Upload Image"}
+
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/svg+xml"
+            disabled={disabled}
+            onChange={
+              onSelect
+            }
+            className="sr-only"
+          />
+        </label>
+
+        {visibleUrl ? (
+          <button
+            type="button"
+            onClick={
+              onRemove
+            }
+            disabled={disabled}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Trash2
+              size={17}
+            />
+            Remove
+          </button>
+        ) : null}
+      </div>
+    </article>
   );
 }

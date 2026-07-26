@@ -731,7 +731,10 @@ async function loadShippingSettings(
     .select(
       "india_shipping_cost, india_free_shipping_threshold, international_shipping_per_item, international_discount_threshold, international_shipping_discount_percent"
     )
-    .limit(1)
+    .eq(
+      "setting_key",
+      "store"
+    )
     .maybeSingle();
 
   if (error) {
