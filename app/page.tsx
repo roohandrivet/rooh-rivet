@@ -4,10 +4,80 @@ import Link from "next/link";
 import FeaturedProducts from "@/components/FeaturedProducts";
 import FeaturedReviews from "@/components/FeaturedReviews";
 import InstagramGallery from "@/components/InstagramGallery";
+import { createClient } from "@/lib/supabase/server";
 
 export const revalidate = 300;
 
-export default function HomePage() {
+type HomeContent = {
+  hero_title: string;
+  hero_subtitle: string;
+  hero_button_text: string;
+  hero_button_link: string;
+  featured_heading: string;
+  featured_description: string;
+};
+
+const DEFAULT_HOME_CONTENT: HomeContent = {
+  hero_title: "Jewellery\nThat Tells\nYour Story.",
+  hero_subtitle:
+    "Discover timeless handcrafted jewellery designed with elegance, passion and craftsmanship. Every Rooh & Rivet piece is created to celebrate life's most meaningful moments.",
+  hero_button_text: "Shop Collection",
+  hero_button_link: "/shop",
+  featured_heading: "Featured Jewellery",
+  featured_description:
+    "Discover our most loved handcrafted jewellery, thoughtfully designed for timeless elegance and everyday luxury.",
+};
+
+export default async function HomePage() {
+  const supabase =
+    await createClient();
+
+  const {
+    data,
+    error,
+  } = await supabase
+    .from("site_content")
+    .select(
+      `
+        hero_title,
+        hero_subtitle,
+        hero_button_text,
+        hero_button_link,
+        featured_heading,
+        featured_description
+      `
+    )
+    .eq("page", "home")
+    .maybeSingle();
+
+  if (error) {
+    console.error(
+      "Failed to load homepage content:",
+      error
+    );
+  }
+
+  const homeContent:
+    HomeContent = {
+    hero_title:
+      data?.hero_title?.trim() ||
+      DEFAULT_HOME_CONTENT.hero_title,
+    hero_subtitle:
+      data?.hero_subtitle?.trim() ||
+      DEFAULT_HOME_CONTENT.hero_subtitle,
+    hero_button_text:
+      data?.hero_button_text?.trim() ||
+      DEFAULT_HOME_CONTENT.hero_button_text,
+    hero_button_link:
+      data?.hero_button_link?.trim() ||
+      DEFAULT_HOME_CONTENT.hero_button_link,
+    featured_heading:
+      data?.featured_heading?.trim() ||
+      DEFAULT_HOME_CONTENT.featured_heading,
+    featured_description:
+      data?.featured_description?.trim() ||
+      DEFAULT_HOME_CONTENT.featured_description,
+  };
   return (
     <main className="bg-[#F8F4EF]">
       {/* ================= HERO ================= */}
@@ -19,27 +89,20 @@ export default function HomePage() {
               Luxury Handcrafted Jewellery
             </p>
 
-            <h1 className="mt-8 font-serif text-6xl leading-tight text-[#4B2E2E] lg:text-7xl">
-              Jewellery
-              <br />
-              That Tells
-              <br />
-              Your Story.
+            <h1 className="mt-8 whitespace-pre-line font-serif text-6xl leading-tight text-[#4B2E2E] lg:text-7xl">
+              {homeContent.hero_title}
             </h1>
 
             <p className="mt-8 max-w-xl text-lg leading-9 text-[#7A6464]">
-              Discover timeless handcrafted jewellery designed
-              with elegance, passion and craftsmanship. Every
-              Rooh & Rivet piece is created to celebrate life's
-              most meaningful moments.
+              {homeContent.hero_subtitle}
             </p>
 
             <div className="mt-12 flex flex-wrap gap-5">
               <Link
-                href="/shop"
+                href={homeContent.hero_button_link}
                 className="rounded-full bg-[#5A2D2D] px-10 py-5 text-white transition duration-300 hover:bg-[#3E1F1F]"
               >
-                Shop Collection
+                {homeContent.hero_button_text}
               </Link>
 
               <Link
@@ -118,7 +181,14 @@ export default function HomePage() {
 
       {/* ================= FEATURED PRODUCTS ================= */}
 
-      <FeaturedProducts />
+      <FeaturedProducts
+        heading={
+          homeContent.featured_heading
+        }
+        description={
+          homeContent.featured_description
+        }
+      />
 
       {/* ================= BRAND STORY ================= */}
 
