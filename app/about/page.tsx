@@ -1,252 +1,200 @@
+import type { Metadata } from "next";
 import Image from "next/image";
+import Link from "next/link";
+import {
+  ArrowRight,
+  Gem,
+  Heart,
+  Sparkles,
+} from "lucide-react";
 
-export default function AboutPage() {
+import { createClient } from "@/lib/supabase/server";
+
+export const metadata: Metadata = {
+  title: "About Us | Rooh & Rivet",
+  description:
+    "Discover the story, mission and vision behind Rooh & Rivet.",
+};
+
+export const revalidate = 300;
+
+type AboutContent = {
+  heading: string;
+  story: string;
+  mission: string;
+  vision: string;
+  brand_image_url: string;
+};
+
+const DEFAULT_CONTENT: AboutContent = {
+  heading: "Our Story",
+  story:
+    "Rooh & Rivet was created from a love of jewellery that feels personal, meaningful and timeless. Every piece is thoughtfully selected to celebrate individuality and the moments that matter most.",
+  mission:
+    "To offer distinctive jewellery that combines considered design, enduring quality and effortless elegance.",
+  vision:
+    "To build a trusted jewellery house known for meaningful design, exceptional service and pieces that become part of your story.",
+  brand_image_url: "",
+};
+
+export default async function AboutPage() {
+  const supabase =
+    await createClient();
+
+  const {
+    data,
+    error,
+  } = await supabase
+    .from("site_content")
+    .select(
+      `
+        heading,
+        story,
+        mission,
+        vision,
+        brand_image_url
+      `
+    )
+    .eq("page", "about")
+    .maybeSingle();
+
+  if (error) {
+    console.error(
+      "Failed to load About page content:",
+      error
+    );
+  }
+
+  const content:
+    AboutContent = {
+    heading:
+      data?.heading?.trim() ||
+      DEFAULT_CONTENT.heading,
+    story:
+      data?.story?.trim() ||
+      DEFAULT_CONTENT.story,
+    mission:
+      data?.mission?.trim() ||
+      DEFAULT_CONTENT.mission,
+    vision:
+      data?.vision?.trim() ||
+      DEFAULT_CONTENT.vision,
+    brand_image_url:
+      data?.brand_image_url?.trim() ||
+      DEFAULT_CONTENT.brand_image_url,
+  };
+
   return (
-    <main className="min-h-screen bg-[#F8F4EF]">
+    <main className="bg-[#F8F4EF] text-[#4B2E2E]">
+      <section className="relative overflow-hidden border-b border-[#E8DED2]">
+        <div className="absolute -left-24 top-20 h-72 w-72 rounded-full bg-[#E8D7CB]/50 blur-3xl" />
+        <div className="absolute -right-16 bottom-0 h-80 w-80 rounded-full bg-[#F0DED5]/60 blur-3xl" />
 
-      {/* Hero */}
-
-      <section className="max-w-7xl mx-auto px-8 py-24">
-
-        <div className="grid lg:grid-cols-2 gap-20 items-center">
-
+        <div className="relative mx-auto grid min-h-[620px] max-w-7xl items-center gap-14 px-6 py-24 lg:grid-cols-2 lg:px-10">
           <div>
-
-            <p className="uppercase tracking-[8px] text-[#8B6B5B] text-sm">
-              Our Story
+            <p className="text-sm uppercase tracking-[0.36em] text-[#8B6B5B]">
+              The House of Rooh & Rivet
             </p>
 
-            <h1 className="mt-6 text-6xl font-serif text-[#4B2E2E]">
-              Jewellery Crafted
-              <br />
-              With Meaning
+            <h1 className="mt-7 font-serif text-6xl leading-tight md:text-7xl">
+              {content.heading}
             </h1>
 
-            <p className="mt-10 text-lg leading-9 text-[#7A6464]">
+            <div className="mt-8 max-w-2xl whitespace-pre-line text-lg leading-9 text-[#725D59]">
+              {content.story}
+            </div>
 
-              At Rooh & Rivet, every piece is thoughtfully handcrafted to
-              celebrate timeless elegance, individuality and life's most
-              meaningful moments.
-
-              Inspired by heritage craftsmanship and modern sophistication,
-              our jewellery is designed to become part of your story.
-
-            </p>
-
+            <Link
+              href="/shop"
+              className="mt-10 inline-flex items-center gap-3 rounded-full bg-[#5A2D2D] px-8 py-4 font-medium text-white transition hover:bg-[#432121]"
+            >
+              Explore the Collection
+              <ArrowRight size={18} />
+            </Link>
           </div>
 
-          <div>
+          <div className="relative">
+            <div className="absolute -inset-5 rounded-[44px] border border-[#DCCDC3]" />
 
-            <Image
-              src="/about.jpg"
-              alt="Rooh & Rivet"
-              width={800}
-              height={900}
-              className="rounded-[40px] shadow-2xl object-cover w-full"
-            />
-
+            <div className="relative aspect-[4/5] overflow-hidden rounded-[36px] bg-[#EEE3DA] shadow-xl">
+              {content.brand_image_url ? (
+                <Image
+                  src={content.brand_image_url}
+                  alt="Rooh & Rivet brand story"
+                  fill
+                  priority
+                  sizes="(max-width: 1024px) 100vw, 50vw"
+                  className="object-cover"
+                />
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+                  <Gem
+                    size={64}
+                    strokeWidth={1.2}
+                    className="text-[#8B6B5B]"
+                  />
+                  <p className="mt-6 font-serif text-3xl">
+                    Meaningful jewellery,
+                    thoughtfully chosen.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
-
         </div>
-
-      </section>
-      {/* ================= CRAFTSMANSHIP ================= */}
-
-      <section className="bg-white py-24">
-
-        <div className="max-w-7xl mx-auto px-8">
-
-          <div className="text-center">
-
-            <p className="uppercase tracking-[8px] text-[#8B6B5B] text-sm">
-              Our Philosophy
-            </p>
-
-            <h2 className="mt-6 text-5xl font-serif text-[#4B2E2E]">
-              Where Tradition Meets Modern Luxury
-            </h2>
-
-            <p className="max-w-3xl mx-auto mt-8 text-lg leading-9 text-[#7A6464]">
-              Every Rooh & Rivet creation reflects our passion for timeless
-              design. We combine skilled craftsmanship with carefully selected
-              materials to create jewellery that feels elegant today and
-              treasured for years to come.
-            </p>
-
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-10 mt-20">
-
-            {/* Card 1 */}
-
-            <div className="bg-[#F8F4EF] rounded-[32px] p-10 shadow-lg hover:shadow-2xl transition">
-
-              <div className="text-5xl">
-                💎
-              </div>
-
-              <h3 className="mt-8 text-3xl font-serif text-[#4B2E2E]">
-                Premium Materials
-              </h3>
-
-              <p className="mt-5 leading-8 text-[#7A6464]">
-                Every piece is crafted using carefully selected materials to
-                ensure lasting beauty, comfort and exceptional quality.
-              </p>
-
-            </div>
-
-            {/* Card 2 */}
-
-            <div className="bg-[#F8F4EF] rounded-[32px] p-10 shadow-lg hover:shadow-2xl transition">
-
-              <div className="text-5xl">
-                ✨
-              </div>
-
-              <h3 className="mt-8 text-3xl font-serif text-[#4B2E2E]">
-                Handcrafted Excellence
-              </h3>
-
-              <p className="mt-5 leading-8 text-[#7A6464]">
-                Each jewellery piece is finished by skilled artisans who pay
-                attention to every detail, creating designs you'll cherish.
-              </p>
-
-            </div>
-
-            {/* Card 3 */}
-
-            <div className="bg-[#F8F4EF] rounded-[32px] p-10 shadow-lg hover:shadow-2xl transition">
-
-              <div className="text-5xl">
-                ❤️
-              </div>
-
-              <h3 className="mt-8 text-3xl font-serif text-[#4B2E2E]">
-                Designed for Every Moment
-              </h3>
-
-              <p className="mt-5 leading-8 text-[#7A6464]">
-                Whether it's a wedding, celebration or everyday elegance,
-                Rooh & Rivet jewellery is made to become part of your story.
-              </p>
-
-            </div>
-
-          </div>
-
-        </div>
-
-      </section>
-      {/* ================= OUR VALUES ================= */}
-
-      <section className="py-24">
-
-        <div className="max-w-7xl mx-auto px-8">
-
-          <div className="text-center">
-
-            <p className="uppercase tracking-[8px] text-[#8B6B5B] text-sm">
-              Our Values
-            </p>
-
-            <h2 className="mt-6 text-5xl font-serif text-[#4B2E2E]">
-              Why Choose Rooh & Rivet
-            </h2>
-
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-12 mt-20">
-
-            <div className="bg-white rounded-[32px] shadow-lg p-10">
-
-              <h3 className="text-3xl font-serif text-[#4B2E2E]">
-                Timeless Design
-              </h3>
-
-              <p className="mt-6 text-[#7A6464] leading-8">
-                We create jewellery that goes beyond trends. Every collection is
-                thoughtfully designed to remain elegant and meaningful for years
-                to come.
-              </p>
-
-            </div>
-
-            <div className="bg-white rounded-[32px] shadow-lg p-10">
-
-              <h3 className="text-3xl font-serif text-[#4B2E2E]">
-                Crafted With Care
-              </h3>
-
-              <p className="mt-6 text-[#7A6464] leading-8">
-                Every detail matters. From craftsmanship to packaging, we ensure
-                each order reflects the quality and care our customers deserve.
-              </p>
-
-            </div>
-
-            <div className="bg-white rounded-[32px] shadow-lg p-10">
-
-              <h3 className="text-3xl font-serif text-[#4B2E2E]">
-                Luxury Experience
-              </h3>
-
-              <p className="mt-6 text-[#7A6464] leading-8">
-                Shopping with Rooh & Rivet is designed to feel effortless,
-                elegant and memorable—from your first visit to the moment your
-                jewellery arrives.
-              </p>
-
-            </div>
-
-            <div className="bg-white rounded-[32px] shadow-lg p-10">
-
-              <h3 className="text-3xl font-serif text-[#4B2E2E]">
-                Customer First
-              </h3>
-
-              <p className="mt-6 text-[#7A6464] leading-8">
-                Your satisfaction is at the heart of everything we do. We're
-                committed to exceptional service before, during and after every
-                purchase.
-              </p>
-
-            </div>
-
-          </div>
-
-        </div>
-
       </section>
 
-      {/* ================= CALL TO ACTION ================= */}
+      <section className="mx-auto max-w-7xl px-6 py-24 lg:px-10">
+        <div className="grid gap-8 lg:grid-cols-2">
+          <article className="rounded-[32px] border border-[#E7DBD1] bg-white p-9 shadow-sm md:p-12">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F4E8E1]">
+              <Heart className="text-[#5A2D2D]" />
+            </div>
 
-      <section className="bg-[#4B2E2E] py-24">
+            <p className="mt-8 text-sm uppercase tracking-[0.3em] text-[#8B6B5B]">
+              Our Mission
+            </p>
 
-        <div className="max-w-4xl mx-auto text-center px-8">
+            <p className="mt-5 whitespace-pre-line font-serif text-3xl leading-relaxed text-[#4B2E2E]">
+              {content.mission}
+            </p>
+          </article>
 
-          <h2 className="text-5xl font-serif text-white">
-            Discover Your Next Timeless Piece
-          </h2>
+          <article className="rounded-[32px] border border-[#E7DBD1] bg-[#5A2D2D] p-9 text-white shadow-sm md:p-12">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10">
+              <Sparkles />
+            </div>
 
-          <p className="mt-8 text-[#E8DCD4] leading-8 text-lg">
-            Explore our carefully curated collection of handcrafted jewellery
-            designed to celebrate every milestone, every memory and every
-            special occasion.
+            <p className="mt-8 text-sm uppercase tracking-[0.3em] text-[#E6CAC0]">
+              Our Vision
+            </p>
+
+            <p className="mt-5 whitespace-pre-line font-serif text-3xl leading-relaxed">
+              {content.vision}
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section className="border-y border-[#E8DED2] bg-white">
+        <div className="mx-auto max-w-4xl px-6 py-24 text-center">
+          <p className="text-sm uppercase tracking-[0.35em] text-[#8B6B5B]">
+            Made for Your Story
           </p>
 
-          <a
+          <h2 className="mt-5 font-serif text-5xl leading-tight">
+            Find the piece that feels like you.
+          </h2>
+
+          <Link
             href="/shop"
-            className="inline-block mt-12 bg-white text-[#4B2E2E] px-10 py-5 rounded-full font-medium hover:bg-[#F8F4EF] transition"
+            className="mt-9 inline-flex items-center gap-3 rounded-full bg-[#5A2D2D] px-9 py-4 font-medium text-white transition hover:bg-[#432121]"
           >
-            Explore Collection
-          </a>
-
+            Shop Rooh & Rivet
+            <ArrowRight size={18} />
+          </Link>
         </div>
-
       </section>
-
     </main>
   );
 }
