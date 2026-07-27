@@ -83,6 +83,9 @@ const RATES_STORAGE_KEY =
 const BASE_CURRENCY:
   CurrencyCode = "INR";
 
+const RATES_REFRESH_INTERVAL_MS =
+  6 * 60 * 60 * 1000;
+
 const ALL_CURRENCIES:
   CurrencyCode[] = [
   "INR",
@@ -298,6 +301,11 @@ export function CurrencyProvider({
   ] = useState(false);
 
   const [
+    autoUpdateEnabled,
+    setAutoUpdateEnabled,
+  ] = useState(true);
+
+  const [
     ratesLoading,
     setRatesLoading,
   ] = useState(true);
@@ -361,6 +369,7 @@ export function CurrencyProvider({
           if (
             result.base &&
             result.base
+              .trim()
               .toUpperCase() !==
               BASE_CURRENCY
           ) {
@@ -464,8 +473,7 @@ export function CurrencyProvider({
 
       setMounted(true);
 
-      let autoUpdateExchangeRates =
-        true;
+      let shouldAutoUpdate = true;
 
       try {
         const {
@@ -486,14 +494,14 @@ export function CurrencyProvider({
           throw error;
         }
 
-        const row =
+        const settings =
           data as
             | CurrencySettingsRow
             | null;
 
-        if (row) {
-          autoUpdateExchangeRates =
-            row
+        if (settings) {
+          shouldAutoUpdate =
+            settings
               .auto_update_exchange_rates !==
             false;
         }
@@ -510,19 +518,27 @@ export function CurrencyProvider({
         return;
       }
 
-      if (
-        autoUpdateExchangeRates
-      ) {
+      setAutoUpdateEnabled(
+        shouldAutoUpdate
+      );
+
+      if (shouldAutoUpdate) {
         await refreshRates();
-
-        return;
+      } else {
+        setRatesLoading(false);
       }
-
-      setRatesLoading(false);
     }
 
     void initialiseCurrency();
 
+    return () => {
+      active = false;
+    };
+  }, [
+    refreshRates,
+  ]);
+
+  useEffect(() => {
     function handleStorage(
       event: StorageEvent
     ) {
@@ -556,14 +572,37 @@ export function CurrencyProvider({
     );
 
     return () => {
-      active = false;
-
       window.removeEventListener(
         "storage",
         handleStorage
       );
     };
+  }, []);
+
+  useEffect(() => {
+    if (
+      !mounted ||
+      !autoUpdateEnabled
+    ) {
+      return;
+    }
+
+    const intervalId =
+      window.setInterval(
+        () => {
+          void refreshRates();
+        },
+        RATES_REFRESH_INTERVAL_MS
+      );
+
+    return () => {
+      window.clearInterval(
+        intervalId
+      );
+    };
   }, [
+    autoUpdateEnabled,
+    mounted,
     refreshRates,
   ]);
 

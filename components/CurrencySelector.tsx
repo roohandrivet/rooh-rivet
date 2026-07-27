@@ -16,7 +16,8 @@ type CurrencyOption = {
   label: string;
 };
 
-const CURRENCY_OPTIONS: CurrencyOption[] = [
+const CURRENCY_OPTIONS:
+  CurrencyOption[] = [
   {
     code: "INR",
     label: "₹ INR",
@@ -52,24 +53,32 @@ function formatUpdatedAt(
 
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
     return null;
   }
 
-  return date.toLocaleString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return date.toLocaleString(
+    "en-GB",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }
+  );
 }
 
 function isCurrencyCode(
   value: string
 ): value is CurrencyCode {
   return CURRENCY_OPTIONS.some(
-    (option) => option.code === value
+    (option) =>
+      option.code === value
   );
 }
 
@@ -84,13 +93,22 @@ export default function CurrencySelector() {
     refreshRates,
   } = useCurrency();
 
-  const updatedLabel = formatUpdatedAt(
-    ratesUpdatedAt
-  );
+  const availableOptions =
+    CURRENCY_OPTIONS.filter(
+      (option) =>
+        supportedCurrencies.includes(
+          option.code
+        )
+    );
+
+  const updatedLabel =
+    formatUpdatedAt(
+      ratesUpdatedAt
+    );
 
   function handleCurrencyChange(
     value: string
-  ) {
+  ): void {
     if (!isCurrencyCode(value)) {
       return;
     }
@@ -116,15 +134,19 @@ export default function CurrencySelector() {
               event.target.value
             )
           }
+          disabled={
+            availableOptions.length ===
+            0
+          }
           title={
             updatedLabel
               ? `Exchange rates updated ${updatedLabel}`
               : "Select display currency"
           }
           aria-label="Select display currency"
-          className="w-full cursor-pointer appearance-none rounded-full border border-[#D8C3B0] bg-[#F8F4EF] py-2.5 pl-4 pr-10 text-sm font-semibold text-[#5A2D2D] outline-none transition hover:border-[#8B6B5B] focus:border-[#5A2D2D] focus:ring-2 focus:ring-[#5A2D2D]/10"
+          className="w-full cursor-pointer appearance-none rounded-full border border-[#D8C3B0] bg-[#F8F4EF] py-2.5 pl-4 pr-10 text-sm font-semibold text-[#5A2D2D] outline-none transition hover:border-[#8B6B5B] focus:border-[#5A2D2D] focus:ring-2 focus:ring-[#5A2D2D]/10 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {CURRENCY_OPTIONS.map(
+          {availableOptions.map(
             (option) => (
               <option
                 key={option.code}
@@ -163,19 +185,6 @@ export default function CurrencySelector() {
           title={`${ratesError} Click to retry.`}
           aria-label="Retry loading exchange rates"
           className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-amber-300 bg-amber-50 text-amber-700 transition hover:bg-amber-100"
-        >
-          <RefreshCw size={16} />
-        </button>
-      ) : supportedCurrencies.length ===
-        0 ? (
-        <button
-          type="button"
-          onClick={() => {
-            void refreshRates();
-          }}
-          title="Refresh exchange rates"
-          aria-label="Refresh exchange rates"
-          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#D8C3B0] bg-[#F8F4EF] text-[#8B6B5B] transition hover:border-[#8B6B5B] hover:text-[#5A2D2D]"
         >
           <RefreshCw size={16} />
         </button>
