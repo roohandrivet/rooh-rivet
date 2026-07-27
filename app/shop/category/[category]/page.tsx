@@ -15,25 +15,37 @@ export const fetchCache = "force-no-store";
 const CATEGORY_CONFIG = {
   necklaces: {
     title: "Necklaces",
-    databaseValue: "Necklaces",
+    acceptedValues: [
+      "necklace",
+      "necklaces",
+    ],
     description:
       "Discover elegant handcrafted necklaces designed to bring timeless beauty to every occasion.",
   },
   earrings: {
     title: "Earrings",
-    databaseValue: "Earrings",
+    acceptedValues: [
+      "earring",
+      "earrings",
+    ],
     description:
       "Explore handcrafted earrings created with elegance, detail and effortless sophistication.",
   },
   bracelets: {
     title: "Bracelets",
-    databaseValue: "Bracelets",
+    acceptedValues: [
+      "bracelet",
+      "bracelets",
+    ],
     description:
       "Discover refined bracelets designed to add a graceful finishing touch to every look.",
   },
   rings: {
     title: "Rings",
-    databaseValue: "Rings",
+    acceptedValues: [
+      "ring",
+      "rings",
+    ],
     description:
       "Explore timeless handcrafted rings created to celebrate meaningful moments.",
   },
@@ -79,6 +91,30 @@ type Product = {
   currently_reserved: boolean;
 };
 
+type CategoryNavigationItem = {
+  name: string;
+  slug: CategorySlug;
+};
+
+const categories: CategoryNavigationItem[] = [
+  {
+    name: "Necklaces",
+    slug: "necklaces",
+  },
+  {
+    name: "Earrings",
+    slug: "earrings",
+  },
+  {
+    name: "Bracelets",
+    slug: "bracelets",
+  },
+  {
+    name: "Rings",
+    slug: "rings",
+  },
+];
+
 function isCategorySlug(
   value: string
 ): value is CategorySlug {
@@ -86,6 +122,16 @@ function isCategorySlug(
     CATEGORY_CONFIG,
     value
   );
+}
+
+function normaliseCategory(
+  value: string | null
+): string {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
 }
 
 function toNumber(
@@ -122,7 +168,9 @@ export default async function CategoryPage({
   const resolvedParams = await params;
 
   const categorySlug =
-    resolvedParams.category.toLowerCase();
+    resolvedParams.category
+      .trim()
+      .toLowerCase();
 
   if (!isCategorySlug(categorySlug)) {
     notFound();
@@ -155,10 +203,6 @@ export default async function CategoryPage({
       `
     )
     .eq("active", true)
-    .ilike(
-      "category",
-      category.databaseValue
-    )
     .order("created_at", {
       ascending: false,
     });
@@ -174,64 +218,55 @@ export default async function CategoryPage({
 
   const products: Product[] = (
     (data ?? []) as ProductRow[]
-  ).map((product) => ({
-    id: product.id,
-    slug: product.slug,
-    name: product.name,
-    description:
-      product.description ?? "",
-    price: Math.max(
-      0,
-      toNumber(product.price)
-    ),
-    image: product.image ?? "",
-    featured:
-      product.featured === true,
-    bestseller:
-      product.bestseller === true,
-    category:
-      product.category ?? "",
-    stock: Math.max(
-      0,
-      Math.floor(
-        toNumber(product.stock)
-      )
-    ),
-    reservation_enabled:
-      product.reservation_enabled ===
-      true,
-    reserved_until:
-      product.reserved_until,
-    currently_reserved:
-      product.reservation_enabled ===
-        true &&
-      isCurrentlyReserved(
-        product.reserved_until,
-        currentTime
-      ),
-  }));
+  )
+    .filter((product) => {
+      const productCategory =
+        normaliseCategory(
+          product.category
+        );
 
-  const categories: Array<{
-    name: string;
-    slug: CategorySlug;
-  }> = [
-    {
-      name: "Necklaces",
-      slug: "necklaces",
-    },
-    {
-      name: "Earrings",
-      slug: "earrings",
-    },
-    {
-      name: "Bracelets",
-      slug: "bracelets",
-    },
-    {
-      name: "Rings",
-      slug: "rings",
-    },
-  ];
+      return category.acceptedValues.some(
+        (acceptedValue) =>
+          productCategory ===
+          acceptedValue
+      );
+    })
+    .map((product) => ({
+      id: product.id,
+      slug: product.slug,
+      name: product.name,
+      description:
+        product.description ?? "",
+      price: Math.max(
+        0,
+        toNumber(product.price)
+      ),
+      image: product.image ?? "",
+      featured:
+        product.featured === true,
+      bestseller:
+        product.bestseller === true,
+      category:
+        product.category ?? "",
+      stock: Math.max(
+        0,
+        Math.floor(
+          toNumber(product.stock)
+        )
+      ),
+      reservation_enabled:
+        product.reservation_enabled ===
+        true,
+      reserved_until:
+        product.reserved_until,
+      currently_reserved:
+        product.reservation_enabled ===
+          true &&
+        isCurrentlyReserved(
+          product.reserved_until,
+          currentTime
+        ),
+    }));
 
   return (
     <main className="min-h-screen bg-[#F8F4EF]">
@@ -317,7 +352,9 @@ export default async function CategoryPage({
         ) : products.length === 0 ? (
           <div className="rounded-3xl border border-[#E8DDD3] bg-white px-6 py-14 text-center shadow-sm">
             <h2 className="font-serif text-3xl text-[#4B2E2E]">
-              No {category.title.toLowerCase()} available
+              No{" "}
+              {category.title.toLowerCase()}{" "}
+              available
             </h2>
 
             <p className="mx-auto mt-4 max-w-xl leading-7 text-[#7A6464]">
