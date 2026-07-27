@@ -20,8 +20,10 @@ export type CurrencyCode =
   | "AUD"
   | "CAD";
 
-type ExchangeRates =
-  Record<CurrencyCode, number>;
+type ExchangeRates = Record<
+  CurrencyCode,
+  number
+>;
 
 type ExchangeRatesResponse = {
   success: boolean;
@@ -40,9 +42,6 @@ type CachedExchangeRates = {
 };
 
 type CurrencySettingsRow = {
-  supported_currencies:
-    | string[]
-    | null;
   auto_update_exchange_rates:
     | boolean
     | null;
@@ -72,8 +71,7 @@ type CurrencyContextType = {
 
 const CurrencyContext =
   createContext<
-    CurrencyContextType
-      | undefined
+    CurrencyContextType | undefined
   >(undefined);
 
 const CURRENCY_STORAGE_KEY =
@@ -126,65 +124,11 @@ function isCurrencyCode(
   );
 }
 
-function normaliseSupportedCurrencies(
-  value:
-    | string[]
-    | null
-    | undefined
-): CurrencyCode[] {
-  if (
-    !Array.isArray(value)
-  ) {
-    return [
-      ...ALL_CURRENCIES,
-    ];
-  }
-
-  const uniqueCurrencies =
-    Array.from(
-      new Set(
-        value
-          .map(
-            (entry) =>
-              entry
-                .trim()
-                .toUpperCase()
-          )
-          .filter(
-            isCurrencyCode
-          )
-      )
-    );
-
-  if (
-    uniqueCurrencies.length ===
-    0
-  ) {
-    return [
-      BASE_CURRENCY,
-    ];
-  }
-
-  if (
-    !uniqueCurrencies.includes(
-      BASE_CURRENCY
-    )
-  ) {
-    return [
-      BASE_CURRENCY,
-      ...uniqueCurrencies,
-    ];
-  }
-
-  return uniqueCurrencies;
-}
-
 function isValidRate(
   value: unknown
 ): value is number {
   return (
-    typeof value ===
-      "number" &&
+    typeof value === "number" &&
     Number.isFinite(value) &&
     value > 0
   );
@@ -211,9 +155,7 @@ function normaliseRates(
   }
 
   ALL_CURRENCIES.forEach(
-    (
-      currencyCode
-    ) => {
+    (currencyCode) => {
       if (
         currencyCode ===
         BASE_CURRENCY
@@ -268,8 +210,7 @@ function readCachedRates():
     if (
       !parsedValue.rates ||
       typeof parsedValue
-        .cachedAt !==
-        "string"
+        .cachedAt !== "string"
     ) {
       return null;
     }
@@ -279,15 +220,11 @@ function readCachedRates():
         normaliseRates(
           parsedValue.rates
         ),
-
       updatedAt:
         typeof parsedValue
-          .updatedAt ===
-        "string"
-          ? parsedValue
-              .updatedAt
+          .updatedAt === "string"
+          ? parsedValue.updatedAt
           : null,
-
       cachedAt:
         parsedValue.cachedAt,
     };
@@ -348,16 +285,6 @@ export function CurrencyProvider({
     );
 
   const [
-    supportedCurrencies,
-    setSupportedCurrencies,
-  ] =
-    useState<
-      CurrencyCode[]
-    >([
-      ...ALL_CURRENCIES,
-    ]);
-
-  const [
     rates,
     setRates,
   ] =
@@ -387,13 +314,18 @@ export function CurrencyProvider({
     string | null
   >(null);
 
+  const supportedCurrencies =
+    useMemo<CurrencyCode[]>(
+      () => [
+        ...ALL_CURRENCIES,
+      ],
+      []
+    );
+
   const refreshRates =
     useCallback(
       async (): Promise<void> => {
-        setRatesLoading(
-          true
-        );
-
+        setRatesLoading(true);
         setRatesError("");
 
         try {
@@ -401,12 +333,8 @@ export function CurrencyProvider({
             await fetch(
               "/api/exchange-rates",
               {
-                method:
-                  "GET",
-
-                cache:
-                  "no-store",
-
+                method: "GET",
+                cache: "no-store",
                 headers: {
                   Accept:
                     "application/json",
@@ -449,9 +377,8 @@ export function CurrencyProvider({
           const updatedAt =
             typeof result
               .updatedAt ===
-            "string"
-              ? result
-                  .updatedAt
+              "string"
+              ? result.updatedAt
               : new Date()
                   .toISOString();
 
@@ -476,15 +403,12 @@ export function CurrencyProvider({
           );
 
           setRatesError(
-            error instanceof
-              Error
+            error instanceof Error
               ? error.message
               : "Unable to load live exchange rates."
           );
         } finally {
-          setRatesLoading(
-            false
-          );
+          setRatesLoading(false);
         }
       },
       []
@@ -517,10 +441,28 @@ export function CurrencyProvider({
         );
       }
 
-      let nextSupportedCurrencies =
-        [
-          ...ALL_CURRENCIES,
-        ];
+      const savedCurrencyCode =
+        savedCurrency &&
+        isCurrencyCode(
+          savedCurrency
+        )
+          ? savedCurrency
+          : BASE_CURRENCY;
+
+      if (!active) {
+        return;
+      }
+
+      setCurrencyState(
+        savedCurrencyCode
+      );
+
+      window.localStorage.setItem(
+        CURRENCY_STORAGE_KEY,
+        savedCurrencyCode
+      );
+
+      setMounted(true);
 
       let autoUpdateExchangeRates =
         true;
@@ -530,14 +472,9 @@ export function CurrencyProvider({
           data,
           error,
         } = await supabase
-          .from(
-            "settings"
-          )
+          .from("settings")
           .select(
-            `
-              supported_currencies,
-              auto_update_exchange_rates
-            `
+            "auto_update_exchange_rates"
           )
           .eq(
             "setting_key",
@@ -555,12 +492,6 @@ export function CurrencyProvider({
             | null;
 
         if (row) {
-          nextSupportedCurrencies =
-            normaliseSupportedCurrencies(
-              row
-                .supported_currencies
-            );
-
           autoUpdateExchangeRates =
             row
               .auto_update_exchange_rates !==
@@ -570,7 +501,7 @@ export function CurrencyProvider({
         error: unknown
       ) {
         console.error(
-          "Failed to load currency settings:",
+          "Failed to load exchange-rate settings:",
           error
         );
       }
@@ -578,41 +509,6 @@ export function CurrencyProvider({
       if (!active) {
         return;
       }
-
-      setSupportedCurrencies(
-        nextSupportedCurrencies
-      );
-
-      const savedCurrencyCode =
-        savedCurrency &&
-        isCurrencyCode(
-          savedCurrency
-        )
-          ? savedCurrency
-          : null;
-
-      const nextCurrency =
-        savedCurrencyCode &&
-        nextSupportedCurrencies
-          .includes(
-            savedCurrencyCode
-          )
-          ? savedCurrencyCode
-          : nextSupportedCurrencies[
-              0
-            ] ??
-            BASE_CURRENCY;
-
-      setCurrencyState(
-        nextCurrency
-      );
-
-      window.localStorage.setItem(
-        CURRENCY_STORAGE_KEY,
-        nextCurrency
-      );
-
-      setMounted(true);
 
       if (
         autoUpdateExchangeRates
@@ -622,15 +518,50 @@ export function CurrencyProvider({
         return;
       }
 
-      setRatesLoading(
-        false
-      );
+      setRatesLoading(false);
     }
 
     void initialiseCurrency();
 
+    function handleStorage(
+      event: StorageEvent
+    ) {
+      if (
+        event.key !==
+          CURRENCY_STORAGE_KEY ||
+        !event.newValue
+      ) {
+        return;
+      }
+
+      const nextCurrency =
+        event.newValue
+          .trim()
+          .toUpperCase();
+
+      if (
+        isCurrencyCode(
+          nextCurrency
+        )
+      ) {
+        setCurrencyState(
+          nextCurrency
+        );
+      }
+    }
+
+    window.addEventListener(
+      "storage",
+      handleStorage
+    );
+
     return () => {
       active = false;
+
+      window.removeEventListener(
+        "storage",
+        handleStorage
+      );
     };
   }, [
     refreshRates,
@@ -649,11 +580,7 @@ export function CurrencyProvider({
         if (
           !isCurrencyCode(
             normalisedCurrency
-          ) ||
-          !supportedCurrencies
-            .includes(
-              normalisedCurrency
-            )
+          )
         ) {
           return;
         }
@@ -667,15 +594,11 @@ export function CurrencyProvider({
           normalisedCurrency
         );
       },
-      [
-        supportedCurrencies,
-      ]
+      []
     );
 
   const exchangeRate =
-    rates[
-      currency
-    ] ?? 1;
+    rates[currency] ?? 1;
 
   const formatCurrency =
     useCallback(
@@ -683,9 +606,7 @@ export function CurrencyProvider({
         amount: number
       ): string => {
         const numericAmount =
-          Number(
-            amount
-          );
+          Number(amount);
 
         const safeAmount =
           Number.isFinite(
@@ -701,7 +622,9 @@ export function CurrencyProvider({
 
         const displayRate =
           mounted
-            ? exchangeRate
+            ? rates[
+                displayCurrency
+              ] ?? 1
             : 1;
 
         const convertedAmount =
@@ -719,15 +642,11 @@ export function CurrencyProvider({
             displayCurrency
           ],
           {
-            style:
-              "currency",
-
+            style: "currency",
             currency:
               displayCurrency,
-
             minimumFractionDigits:
               0,
-
             maximumFractionDigits,
           }
         )
@@ -741,8 +660,8 @@ export function CurrencyProvider({
       },
       [
         currency,
-        exchangeRate,
         mounted,
+        rates,
       ]
     );
 
@@ -791,13 +710,9 @@ export function CurrencyProvider({
 
   return (
     <CurrencyContext.Provider
-      value={
-        value
-      }
+      value={value}
     >
-      {
-        children
-      }
+      {children}
     </CurrencyContext.Provider>
   );
 }
