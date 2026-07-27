@@ -7,8 +7,8 @@ import {
   Truck,
 } from "lucide-react";
 
-import { createClient } from "@/lib/supabase/server";
 import ProductGrid from "@/components/ProductGrid";
+import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -44,6 +44,30 @@ type Product = {
   reserved_until: string | null;
   currently_reserved: boolean;
 };
+
+type ShopCategory = {
+  name: string;
+  slug: string;
+};
+
+const categories: ShopCategory[] = [
+  {
+    name: "Necklaces",
+    slug: "necklaces",
+  },
+  {
+    name: "Earrings",
+    slug: "earrings",
+  },
+  {
+    name: "Bracelets",
+    slug: "bracelets",
+  },
+  {
+    name: "Rings",
+    slug: "rings",
+  },
+];
 
 function toNumber(
   value: number | string | null
@@ -170,7 +194,11 @@ export default async function ShopPage() {
       </section>
 
       <section className="mx-auto max-w-7xl px-6 sm:px-8">
-        <div className="flex items-center gap-4 rounded-full bg-white px-6 py-5 shadow-lg sm:px-8">
+        <form
+          action="/search"
+          method="get"
+          className="flex items-center gap-4 rounded-full bg-white px-6 py-5 shadow-lg sm:px-8"
+        >
           <Search
             className="shrink-0 text-[#8B6B5B]"
             size={22}
@@ -178,35 +206,31 @@ export default async function ShopPage() {
 
           <input
             type="search"
+            name="q"
             placeholder="Search jewellery..."
             aria-label="Search jewellery"
             className="w-full bg-transparent text-[#4B2E2E] outline-none placeholder:text-[#A79084]"
           />
-        </div>
+        </form>
       </section>
 
       <section className="mx-auto mt-12 max-w-7xl px-6 sm:px-8">
         <div className="flex flex-wrap justify-center gap-4">
-          <button
-            type="button"
+          <Link
+            href="/shop"
             className="rounded-full bg-[#5A2D2D] px-8 py-3 text-[#F1DECA]"
           >
             All
-          </button>
+          </Link>
 
-          {[
-            "Necklaces",
-            "Earrings",
-            "Bracelets",
-            "Rings",
-          ].map((category) => (
-            <button
-              key={category}
-              type="button"
+          {categories.map((category) => (
+            <Link
+              key={category.slug}
+              href={`/shop/category/${category.slug}`}
               className="rounded-full bg-white px-8 py-3 text-[#9A7048] transition hover:bg-[#5A2D2D] hover:text-[#F1DECA]"
             >
-              {category}
-            </button>
+              {category.name}
+            </Link>
           ))}
         </div>
       </section>
