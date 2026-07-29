@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -44,41 +43,21 @@ export default async function AboutPage() {
 
   const { data, error } = await supabase
     .from("site_content")
-    .select(
-      `
-        heading,
-        story,
-        mission,
-        vision,
-        brand_image_url
-      `
-    )
+    .select("heading, story, mission, vision, brand_image_url")
     .eq("page", "about")
     .maybeSingle();
 
   if (error) {
-    console.error(
-      "Failed to load About page content:",
-      error
-    );
+    console.error("Failed to load About page content:", error);
   }
 
   const content: AboutContent = {
-    heading:
-      data?.heading?.trim() ||
-      DEFAULT_CONTENT.heading,
-    story:
-      data?.story?.trim() ||
-      DEFAULT_CONTENT.story,
-    mission:
-      data?.mission?.trim() ||
-      DEFAULT_CONTENT.mission,
-    vision:
-      data?.vision?.trim() ||
-      DEFAULT_CONTENT.vision,
+    heading: data?.heading?.trim() || DEFAULT_CONTENT.heading,
+    story: data?.story?.trim() || DEFAULT_CONTENT.story,
+    mission: data?.mission?.trim() || DEFAULT_CONTENT.mission,
+    vision: data?.vision?.trim() || DEFAULT_CONTENT.vision,
     brand_image_url:
-      data?.brand_image_url?.trim() ||
-      DEFAULT_CONTENT.brand_image_url,
+      data?.brand_image_url?.trim() || DEFAULT_CONTENT.brand_image_url,
   };
 
   return (
@@ -90,7 +69,7 @@ export default async function AboutPage() {
         <div className="relative mx-auto grid min-h-[620px] max-w-7xl items-center gap-14 px-6 py-24 lg:grid-cols-2 lg:px-10">
           <div>
             <p className="text-sm uppercase tracking-[0.36em] text-[#8B6B5B]">
-              The House of Rooh & Rivet
+              The House of Rooh &amp; Rivet
             </p>
 
             <h1 className="mt-7 font-serif text-6xl leading-tight md:text-7xl">
@@ -115,14 +94,14 @@ export default async function AboutPage() {
 
             <div className="relative aspect-[4/5] overflow-hidden rounded-[36px] bg-[#EEE3DA] shadow-xl">
               {content.brand_image_url ? (
-                <Image
-                  src={content.brand_image_url}
-                  alt="Rooh & Rivet brand story"
-                  fill
-                  priority
-                  sizes="(max-width: 1024px) 100vw, 50vw"
-                  className="object-cover"
-                />
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={content.brand_image_url}
+                    alt="Rooh & Rivet brand story"
+                    className="h-full w-full object-cover"
+                  />
+                </>
               ) : (
                 <div className="flex h-full flex-col items-center justify-center px-8 text-center">
                   <Gem
@@ -131,8 +110,7 @@ export default async function AboutPage() {
                     className="text-[#8B6B5B]"
                   />
                   <p className="mt-6 font-serif text-3xl">
-                    Meaningful jewellery,
-                    thoughtfully chosen.
+                    Meaningful jewellery, thoughtfully chosen.
                   </p>
                 </div>
               )}
@@ -147,11 +125,9 @@ export default async function AboutPage() {
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F4E8E1]">
               <Heart className="text-[#5A2D2D]" />
             </div>
-
             <p className="mt-8 text-sm uppercase tracking-[0.3em] text-[#8B6B5B]">
               Our Mission
             </p>
-
             <p className="mt-5 whitespace-pre-line font-serif text-3xl leading-relaxed text-[#4B2E2E]">
               {content.mission}
             </p>
@@ -161,11 +137,9 @@ export default async function AboutPage() {
             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10">
               <Sparkles />
             </div>
-
             <p className="mt-8 text-sm uppercase tracking-[0.3em] text-[#E6CAC0]">
               Our Vision
             </p>
-
             <p className="mt-5 whitespace-pre-line font-serif text-3xl leading-relaxed">
               {content.vision}
             </p>
@@ -178,16 +152,14 @@ export default async function AboutPage() {
           <p className="text-sm uppercase tracking-[0.35em] text-[#8B6B5B]">
             Made for Your Story
           </p>
-
           <h2 className="mt-5 font-serif text-5xl leading-tight">
             Find the piece that feels like you.
           </h2>
-
           <Link
             href="/shop"
             className="mt-9 inline-flex items-center gap-3 rounded-full bg-[#5A2D2D] px-9 py-4 font-medium text-white transition hover:bg-[#432121]"
           >
-            Shop Rooh & Rivet
+            Shop Rooh &amp; Rivet
             <ArrowRight size={18} />
           </Link>
         </div>
