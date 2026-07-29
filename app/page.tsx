@@ -590,13 +590,26 @@ export default async function HomePage() {
               </div>
 
               <div className="relative">
-                <Image
-                  src="/cta.jpg"
-                  alt="Luxury jewellery"
-                  width={700}
-                  height={700}
-                  className="w-full rounded-[32px] object-cover shadow-2xl"
-                />
+                <div className="aspect-square overflow-hidden rounded-[32px] bg-[#EEE3DA] shadow-2xl">
+                  {aboutContent.brand_image_url ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={aboutContent.brand_image_url}
+                        alt="Rooh & Rivet jewellery"
+                        className="h-full w-full object-cover"
+                      />
+                    </>
+                  ) : (
+                    <Image
+                      src="/hero.jpg"
+                      alt="Luxury jewellery"
+                      fill
+                      sizes="(max-width: 1024px) 100vw, 50vw"
+                      className="object-cover"
+                    />
+                  )}
+                </div>
 
                 {hasContactDetails ? (
                   <div className="absolute bottom-5 left-5 right-5 rounded-2xl bg-white/95 p-5 text-[#4B2E2E] shadow-xl backdrop-blur">
