@@ -3,8 +3,11 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useState,
+  type ChangeEvent,
 } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -13,6 +16,8 @@ import {
   ImageIcon,
   Loader2,
   Save,
+  Trash2,
+  Upload,
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
@@ -28,6 +33,19 @@ type AboutContent = {
 type AboutContentRow = AboutContent & {
   page: "about";
 };
+
+const STORAGE_BUCKET =
+  "site-content";
+
+const MAX_IMAGE_SIZE =
+  8 * 1024 * 1024;
+
+const ALLOWED_IMAGE_TYPES =
+  new Set([
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+  ]);
 
 const DEFAULT_CONTENT: AboutContent = {
   heading: "Our Story",
@@ -51,11 +69,78 @@ function getErrorMessage(
   return fallback;
 }
 
+function createSafeFileName(
+  file: File
+): string {
+  const extension =
+    file.name
+      .split(".")
+      .pop()
+      ?.toLowerCase() ||
+    "jpg";
+
+  const baseName =
+    file.name
+      .replace(/\.[^/.]+$/, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) ||
+    "brand-image";
+
+  return `${Date.now()}-${baseName}.${extension}`;
+}
+
+function getStoredObjectPath(
+  publicUrl: string
+): string | null {
+  if (!publicUrl) {
+    return null;
+  }
+
+  const marker =
+    `/storage/v1/object/public/${STORAGE_BUCKET}/`;
+
+  const markerIndex =
+    publicUrl.indexOf(marker);
+
+  if (markerIndex === -1) {
+    return null;
+  }
+
+  const path =
+    publicUrl.slice(
+      markerIndex +
+        marker.length
+    );
+
+  return path
+    ? decodeURIComponent(path)
+    : null;
+}
+
 export default function AboutContentPage() {
   const [content, setContent] =
     useState<AboutContent>(
       DEFAULT_CONTENT
     );
+
+  const [
+    originalImageUrl,
+    setOriginalImageUrl,
+  ] = useState("");
+
+  const [
+    selectedImage,
+    setSelectedImage,
+  ] = useState<File | null>(
+    null
+  );
+
+  const [
+    removeImage,
+    setRemoveImage,
+  ] = useState(false);
 
   const [loading, setLoading] =
     useState(true);
@@ -69,11 +154,40 @@ export default function AboutContentPage() {
   const [success, setSuccess] =
     useState("");
 
+  const localPreviewUrl =
+    useMemo(() => {
+      if (!selectedImage) {
+        return "";
+      }
+
+      return URL.createObjectURL(
+        selectedImage
+      );
+    }, [selectedImage]);
+
+  useEffect(() => {
+    return () => {
+      if (localPreviewUrl) {
+        URL.revokeObjectURL(
+          localPreviewUrl
+        );
+      }
+    };
+  }, [localPreviewUrl]);
+
+  const visibleImageUrl =
+    removeImage
+      ? ""
+      : localPreviewUrl ||
+        content.brand_image_url;
+
   const loadContent =
     useCallback(async () => {
       setLoading(true);
       setError("");
       setSuccess("");
+      setSelectedImage(null);
+      setRemoveImage(false);
 
       try {
         const {
@@ -97,7 +211,8 @@ export default function AboutContentPage() {
           throw loadError;
         }
 
-        setContent({
+        const loadedContent:
+          AboutContent = {
           heading:
             data?.heading ??
             DEFAULT_CONTENT.heading,
@@ -113,7 +228,15 @@ export default function AboutContentPage() {
           brand_image_url:
             data?.brand_image_url ??
             DEFAULT_CONTENT.brand_image_url,
-        });
+        };
+
+        setContent(
+          loadedContent
+        );
+
+        setOriginalImageUrl(
+          loadedContent.brand_image_url
+        );
       } catch (
         loadError: unknown
       ) {
@@ -154,6 +277,126 @@ export default function AboutContentPage() {
     setSuccess("");
   }
 
+  function handleImageSelect(
+    event:
+      ChangeEvent<HTMLInputElement>
+  ): void {
+    const file =
+      event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+
+    if (
+      !ALLOWED_IMAGE_TYPES.has(
+        file.type
+      )
+    ) {
+      setError(
+        "Choose a JPG, PNG or WebP image."
+      );
+      return;
+    }
+
+    if (
+      file.size >
+      MAX_IMAGE_SIZE
+    ) {
+      setError(
+        "The brand image must be 8 MB or smaller."
+      );
+      return;
+    }
+
+    setSelectedImage(file);
+    setRemoveImage(false);
+  }
+
+  function handleRemoveImage():
+    void {
+    setSelectedImage(null);
+    setRemoveImage(true);
+    setError("");
+    setSuccess("");
+  }
+
+  async function uploadBrandImage(
+    file: File
+  ): Promise<string> {
+    const filePath =
+      `about/${createSafeFileName(
+        file
+      )}`;
+
+    const {
+      error: uploadError,
+    } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .upload(
+        filePath,
+        file,
+        {
+          cacheControl:
+            "3600",
+          contentType:
+            file.type,
+          upsert: false,
+        }
+      );
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const {
+      data: publicUrlData,
+    } = supabase.storage
+      .from(STORAGE_BUCKET)
+      .getPublicUrl(filePath);
+
+    if (
+      !publicUrlData.publicUrl
+    ) {
+      throw new Error(
+        "The image uploaded, but its public URL could not be created."
+      );
+    }
+
+    return publicUrlData.publicUrl;
+  }
+
+  async function deleteStoredImage(
+    publicUrl: string
+  ): Promise<void> {
+    const objectPath =
+      getStoredObjectPath(
+        publicUrl
+      );
+
+    if (!objectPath) {
+      return;
+    }
+
+    const {
+      error: deleteError,
+    } = await supabase.storage
+      .from(STORAGE_BUCKET)
+      .remove([objectPath]);
+
+    if (deleteError) {
+      console.error(
+        "Unable to remove previous brand image:",
+        deleteError
+      );
+    }
+  }
+
   async function handleSave():
     Promise<void> {
     if (saving) {
@@ -164,33 +407,55 @@ export default function AboutContentPage() {
     setError("");
     setSuccess("");
 
-    try {
-      const payload:
-        AboutContentRow = {
-        page: "about",
-        heading:
-          content.heading.trim(),
-        story:
-          content.story.trim(),
-        mission:
-          content.mission.trim(),
-        vision:
-          content.vision.trim(),
-        brand_image_url:
-          content.brand_image_url.trim(),
-      };
+    let uploadedImageUrl =
+      "";
 
-      if (!payload.heading) {
+    try {
+      const heading =
+        content.heading.trim();
+
+      const story =
+        content.story.trim();
+
+      if (!heading) {
         throw new Error(
           "About page heading is required."
         );
       }
 
-      if (!payload.story) {
+      if (!story) {
         throw new Error(
           "Brand story is required."
         );
       }
+
+      let nextImageUrl =
+        removeImage
+          ? ""
+          : content.brand_image_url.trim();
+
+      if (selectedImage) {
+        uploadedImageUrl =
+          await uploadBrandImage(
+            selectedImage
+          );
+
+        nextImageUrl =
+          uploadedImageUrl;
+      }
+
+      const payload:
+        AboutContentRow = {
+        page: "about",
+        heading,
+        story,
+        mission:
+          content.mission.trim(),
+        vision:
+          content.vision.trim(),
+        brand_image_url:
+          nextImageUrl,
+      };
 
       const {
         error: saveError,
@@ -207,6 +472,20 @@ export default function AboutContentPage() {
         throw saveError;
       }
 
+      const previousImageUrl =
+        originalImageUrl;
+
+      const imageChanged =
+        previousImageUrl &&
+        previousImageUrl !==
+          nextImageUrl;
+
+      if (imageChanged) {
+        await deleteStoredImage(
+          previousImageUrl
+        );
+      }
+
       setContent({
         heading:
           payload.heading,
@@ -220,12 +499,25 @@ export default function AboutContentPage() {
           payload.brand_image_url,
       });
 
+      setOriginalImageUrl(
+        payload.brand_image_url
+      );
+
+      setSelectedImage(null);
+      setRemoveImage(false);
+
       setSuccess(
-        "About page content saved successfully."
+        "About page content and brand image saved successfully."
       );
     } catch (
       saveError: unknown
     ) {
+      if (uploadedImageUrl) {
+        await deleteStoredImage(
+          uploadedImageUrl
+        );
+      }
+
       console.error(
         "Failed to save about content:",
         saveError
@@ -298,6 +590,7 @@ export default function AboutContentPage() {
                 size={34}
                 className="animate-spin text-[#5A2D2D]"
               />
+
               <p className="mt-4">
                 Loading About page content...
               </p>
@@ -396,28 +689,91 @@ export default function AboutContentPage() {
                 </div>
 
                 <div>
-                  <label
-                    htmlFor="about-image"
-                    className="mb-2 block font-medium text-[#4B2E2E]"
-                  >
-                    Brand Image URL
-                  </label>
+                  <div className="mb-3">
+                    <p className="font-medium text-[#4B2E2E]">
+                      Brand Image
+                    </p>
 
-                  <input
-                    id="about-image"
-                    type="url"
-                    value={
-                      content.brand_image_url
-                    }
-                    onChange={(event) =>
-                      updateField(
-                        "brand_image_url",
-                        event.target.value
-                      )
-                    }
-                    placeholder="https://..."
-                    className="w-full rounded-xl border border-[#E8DED2] px-4 py-3 outline-none transition focus:border-[#5A2D2D]"
-                  />
+                    <p className="mt-1 text-sm text-[#8B7770]">
+                      Upload a JPG, PNG or WebP image up to 8 MB.
+                    </p>
+                  </div>
+
+                  <div className="overflow-hidden rounded-3xl border border-[#E8DED2] bg-[#F8F4EF]">
+                    {visibleImageUrl ? (
+                      <div className="relative aspect-[16/9] w-full">
+                        <Image
+                          src={
+                            visibleImageUrl
+                          }
+                          alt="About page brand preview"
+                          fill
+                          unoptimized={
+                            Boolean(
+                              localPreviewUrl
+                            )
+                          }
+                          sizes="(max-width: 1024px) 100vw, 900px"
+                          className="object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="flex aspect-[16/9] flex-col items-center justify-center px-6 text-center text-[#8B7770]">
+                        <ImageIcon
+                          size={44}
+                          strokeWidth={1.4}
+                        />
+
+                        <p className="mt-4 font-medium">
+                          No brand image uploaded
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex flex-col gap-3 border-t border-[#E8DED2] bg-white p-4 sm:flex-row">
+                      <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#5A2D2D] px-5 py-3 font-medium text-white transition hover:bg-[#432121]">
+                        <Upload size={18} />
+
+                        {visibleImageUrl
+                          ? "Replace Image"
+                          : "Upload Image"}
+
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={
+                            handleImageSelect
+                          }
+                          disabled={saving}
+                          className="sr-only"
+                        />
+                      </label>
+
+                      {visibleImageUrl ? (
+                        <button
+                          type="button"
+                          onClick={
+                            handleRemoveImage
+                          }
+                          disabled={saving}
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 px-5 py-3 font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Trash2 size={18} />
+                          Remove Image
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {selectedImage ? (
+                    <p className="mt-3 text-sm text-[#6F5B55]">
+                      Selected:{" "}
+                      <span className="font-medium">
+                        {selectedImage.name}
+                      </span>
+                      . It will upload when you save.
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
@@ -451,7 +807,9 @@ export default function AboutContentPage() {
                   )}
 
                   {saving
-                    ? "Saving..."
+                    ? selectedImage
+                      ? "Uploading & Saving..."
+                      : "Saving..."
                     : "Save Changes"}
                 </button>
               </div>
