@@ -16,7 +16,9 @@ export const metadata: Metadata = {
     "Discover the story, mission and vision behind Rooh & Rivet.",
 };
 
-export const revalidate = 300;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 type AboutContent = {
   heading: string;
@@ -38,13 +40,9 @@ const DEFAULT_CONTENT: AboutContent = {
 };
 
 export default async function AboutPage() {
-  const supabase =
-    await createClient();
+  const supabase = await createClient();
 
-  const {
-    data,
-    error,
-  } = await supabase
+  const { data, error } = await supabase
     .from("site_content")
     .select(
       `
@@ -65,8 +63,7 @@ export default async function AboutPage() {
     );
   }
 
-  const content:
-    AboutContent = {
+  const content: AboutContent = {
     heading:
       data?.heading?.trim() ||
       DEFAULT_CONTENT.heading,
