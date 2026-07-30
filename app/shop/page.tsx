@@ -21,6 +21,9 @@ type ProductRow = {
   description: string | null;
   price: number | string | null;
   image: string | null;
+  image_1: string | null;
+  image_2: string | null;
+  image_3: string | null;
   featured: boolean | null;
   bestseller: boolean | null;
   category: string | null;
@@ -36,6 +39,9 @@ type Product = {
   description: string;
   price: number;
   image: string;
+  image_1: string;
+  image_2: string;
+  image_3: string;
   featured: boolean;
   bestseller: boolean;
   category: string;
@@ -113,6 +119,9 @@ export default async function ShopPage() {
         description,
         price,
         image,
+        image_1,
+        image_2,
+        image_3,
         featured,
         bestseller,
         category,
@@ -147,7 +156,14 @@ export default async function ShopPage() {
       0,
       toNumber(product.price)
     ),
-    image: product.image ?? "",
+    image:
+      product.image ?? "",
+    image_1:
+      product.image_1 ?? "",
+    image_2:
+      product.image_2 ?? "",
+    image_3:
+      product.image_3 ?? "",
     featured:
       product.featured === true,
     bestseller:
