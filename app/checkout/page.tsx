@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
+import Script from "next/script";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -79,15 +80,84 @@ type AppliedCoupon = {
   cartSignature: string;
 };
 
-type CheckoutResponse = {
+type CreateOrderResponse = {
   success: boolean;
   message?: string;
   code?: string;
   product_id?: string;
-  order?: {
-    id: string | number;
+  key_id?: string;
+  supabase_order_id?: string;
+  razorpay_order?: {
+    id: string;
+    amount: number;
+    currency: string;
   };
 };
+
+type VerifyPaymentResponse = {
+  success: boolean;
+  message?: string;
+  order?: {
+    id: string;
+  };
+};
+
+type RazorpaySuccessResponse = {
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+};
+
+type RazorpayFailureResponse = {
+  error?: {
+    description?: string;
+    reason?: string;
+  };
+};
+
+type RazorpayCheckoutOptions = {
+  key: string;
+  amount: number;
+  currency: string;
+  name: string;
+  description: string;
+  order_id: string;
+  handler: (
+    response: RazorpaySuccessResponse
+  ) => void | Promise<void>;
+  prefill: {
+    name: string;
+    email: string;
+    contact: string;
+  };
+  theme: {
+    color: string;
+  };
+  modal: {
+    confirm_close: boolean;
+    ondismiss: () => void;
+  };
+};
+
+type RazorpayCheckoutInstance = {
+  open: () => void;
+  on: (
+    event: "payment.failed",
+    handler: (
+      response: RazorpayFailureResponse
+    ) => void
+  ) => void;
+};
+
+type RazorpayConstructor = new (
+  options: RazorpayCheckoutOptions
+) => RazorpayCheckoutInstance;
+
+declare global {
+  interface Window {
+    Razorpay?: RazorpayConstructor;
+  }
+}
 
 type ShippingSettings = {
   indiaShippingCost: number;
@@ -109,7 +179,7 @@ const INITIAL_FORM: CheckoutForm = {
   state: "",
   postalCode: "",
   country: "",
-  paymentMethod: "Credit / Debit Card",
+  paymentMethod: "Razorpay",
 };
 
 const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
@@ -200,6 +270,11 @@ export default function CheckoutPage() {
   const [
     loading,
     setLoading,
+  ] = useState(false);
+
+  const [
+    razorpayReady,
+    setRazorpayReady,
   ] = useState(false);
 
   const [
@@ -396,6 +471,15 @@ export default function CheckoutPage() {
   useEffect(() => {
     void checkLogin();
     void loadShippingSettings();
+  }, []);
+
+  useEffect(() => {
+    if (
+      typeof window !== "undefined" &&
+      window.Razorpay
+    ) {
+      setRazorpayReady(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -753,7 +837,7 @@ export default function CheckoutPage() {
 
     if (expiredReservation) {
       setCheckoutError(
-        `${expiredReservation.name} is no longer reserved. Return to the product page and reserve it again before placing your order.`
+        `${expiredReservation.name} is no longer reserved. Return to the product page and reserve it again before paying.`
       );
 
       return;
@@ -762,6 +846,18 @@ export default function CheckoutPage() {
     if (loadingShippingSettings) {
       setCheckoutError(
         "Shipping rates are still loading."
+      );
+
+      return;
+    }
+
+    if (
+      !razorpayReady ||
+      typeof window === "undefined" ||
+      !window.Razorpay
+    ) {
+      setCheckoutError(
+        "The secure payment service is still loading. Please try again."
       );
 
       return;
@@ -836,7 +932,7 @@ export default function CheckoutPage() {
         country:
           form.country.trim(),
         payment_method:
-          form.paymentMethod,
+          "Razorpay",
         coupon_code:
           appliedCoupon?.code ??
           null,
@@ -844,49 +940,52 @@ export default function CheckoutPage() {
           getRequestItems(),
       };
 
-      const response = await fetch(
-        "/api/checkout",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body:
-            JSON.stringify(
-              payload
-            ),
-        }
-      );
+      const createResponse =
+        await fetch(
+          "/api/create-order",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body:
+              JSON.stringify(
+                payload
+              ),
+          }
+        );
 
-      const result =
-        (await response
+      const createResult =
+        (await createResponse
           .json()
           .catch(
             () => ({
               success: false,
               message:
-                "The checkout service returned an invalid response.",
+                "The payment service returned an invalid response.",
             })
-          )) as CheckoutResponse;
+          )) as CreateOrderResponse;
 
       if (
-        !response.ok ||
-        !result.success ||
-        !result.order
+        !createResponse.ok ||
+        !createResult.success ||
+        !createResult.key_id ||
+        !createResult.supabase_order_id ||
+        !createResult.razorpay_order
       ) {
         const message =
-          result.message ??
-          "Failed to place order.";
+          createResult.message ??
+          "Unable to start payment.";
 
         if (
-          result.code ===
+          createResult.code ===
           "RESERVATION_INVALID"
         ) {
           setCheckoutError(
             message
           );
-
+          setLoading(false);
           return;
         }
 
@@ -895,11 +994,144 @@ export default function CheckoutPage() {
         );
       }
 
-      clearCart();
+      const RazorpayCheckout =
+        window.Razorpay;
 
-      router.push(
-        `/order-success?id=${result.order.id}`
+      if (!RazorpayCheckout) {
+        throw new Error(
+          "The secure payment service could not be loaded."
+        );
+      }
+
+      const pendingOrderId =
+        createResult.supabase_order_id;
+      const razorpayOrder =
+        createResult.razorpay_order;
+
+      const checkout =
+        new RazorpayCheckout({
+          key:
+            createResult.key_id,
+          amount:
+            razorpayOrder.amount,
+          currency:
+            razorpayOrder.currency,
+          name: "Rooh & Rivet",
+          description:
+            "Luxury handcrafted jewellery",
+          order_id:
+            razorpayOrder.id,
+          prefill: {
+            name:
+              form.fullName.trim(),
+            email: form.email
+              .trim()
+              .toLowerCase(),
+            contact:
+              form.phone.trim(),
+          },
+          theme: {
+            color: "#5A2D2D",
+          },
+          modal: {
+            confirm_close: true,
+            ondismiss: () => {
+              setCheckoutError(
+                "Payment was cancelled. Your cart has not been cleared."
+              );
+              setLoading(false);
+            },
+          },
+          handler: async (
+            paymentResponse
+          ) => {
+            try {
+              const verifyResponse =
+                await fetch(
+                  "/api/verify-payment",
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type":
+                        "application/json",
+                    },
+                    body:
+                      JSON.stringify({
+                        supabase_order_id:
+                          pendingOrderId,
+                        razorpay_payment_id:
+                          paymentResponse
+                            .razorpay_payment_id,
+                        razorpay_order_id:
+                          paymentResponse
+                            .razorpay_order_id,
+                        razorpay_signature:
+                          paymentResponse
+                            .razorpay_signature,
+                      }),
+                  }
+                );
+
+              const verifyResult =
+                (await verifyResponse
+                  .json()
+                  .catch(
+                    () => ({
+                      success: false,
+                      message:
+                        "The payment verification service returned an invalid response.",
+                    })
+                  )) as VerifyPaymentResponse;
+
+              if (
+                !verifyResponse.ok ||
+                !verifyResult.success ||
+                !verifyResult.order
+              ) {
+                throw new Error(
+                  verifyResult.message ??
+                    "Payment verification failed. Do not pay again until support checks your payment."
+                );
+              }
+
+              clearCart();
+
+              router.push(
+                `/order-success?id=${verifyResult.order.id}`
+              );
+            } catch (
+              verificationError
+            ) {
+              console.error(
+                "Payment verification error:",
+                verificationError
+              );
+
+              setCheckoutError(
+                verificationError instanceof Error
+                  ? verificationError.message
+                  : "Payment verification failed. Please contact support before paying again."
+              );
+              setLoading(false);
+            }
+          },
+        });
+
+      checkout.on(
+        "payment.failed",
+        (failureResponse) => {
+          setCheckoutError(
+            failureResponse.error
+              ?.description ??
+              failureResponse.error
+                ?.reason ??
+              "Payment failed. No order was confirmed and your cart is unchanged."
+          );
+          setLoading(false);
+        }
       );
+
+      checkout.open();
     } catch (error) {
       console.error(
         "Checkout error:",
@@ -909,9 +1141,8 @@ export default function CheckoutPage() {
       setCheckoutError(
         error instanceof Error
           ? error.message
-          : "Something went wrong while placing your order."
+          : "Something went wrong while starting payment."
       );
-    } finally {
       setLoading(false);
     }
   }
@@ -939,6 +1170,19 @@ export default function CheckoutPage() {
 
   return (
     <main className="min-h-screen bg-[#F8F4EF] py-12">
+      <Script
+        src="https://checkout.razorpay.com/v1/checkout.js"
+        strategy="afterInteractive"
+        onLoad={() =>
+          setRazorpayReady(true)
+        }
+        onError={() => {
+          setRazorpayReady(false);
+          setCheckoutError(
+            "The secure payment service could not be loaded. Refresh the page and try again."
+          );
+        }}
+      />
       <div className="mx-auto max-w-7xl px-6">
         <Link
           href="/cart"
@@ -1124,59 +1368,34 @@ export default function CheckoutPage() {
                 Payment Method
               </h3>
 
-              <div className="space-y-4">
-                {[
-                  {
-                    value:
-                      "Credit / Debit Card",
-                    description:
-                      "Secure online payment.",
-                  },
-                  {
-                    value:
-                      "Bank Transfer",
-                    description:
-                      "Bank instructions will be emailed after ordering.",
-                  },
-                ].map((method) => (
-                  <label
-                    key={method.value}
-                    className={`flex cursor-pointer items-center gap-4 rounded-xl border p-5 transition ${
-                      form.paymentMethod ===
-                      method.value
-                        ? "border-[#5A2D2D] bg-[#FCF8F4]"
-                        : "border-[#DED3CB] hover:border-[#5A2D2D]"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="payment"
-                      value={method.value}
-                      checked={
-                        form.paymentMethod ===
-                        method.value
-                      }
-                      onChange={(event) =>
-                        updateField(
-                          "paymentMethod",
-                          event.target.value
-                        )
-                      }
-                      className="accent-[#5A2D2D]"
+              <div className="rounded-xl border border-[#5A2D2D] bg-[#FCF8F4] p-5">
+                <div className="flex items-start gap-4">
+                  <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#5A2D2D] text-white">
+                    <ShieldCheck
+                      size={20}
                     />
+                  </div>
 
-                    <div>
-                      <p className="font-semibold text-[#4B2E2E]">
-                        {method.value}
-                      </p>
+                  <div>
+                    <p className="font-semibold text-[#4B2E2E]">
+                      Razorpay Secure Payment
+                    </p>
 
-                      <p className="mt-1 text-sm text-[#8B6B5B]">
-                        {method.description}
-                      </p>
-                    </div>
-                  </label>
-                ))}
+                    <p className="mt-1 text-sm leading-6 text-[#8B6B5B]">
+                      Pay securely using UPI,
+                      credit or debit card,
+                      netbanking and other
+                      available Razorpay methods.
+                    </p>
+                  </div>
+                </div>
               </div>
+
+              {!razorpayReady ? (
+                <p className="mt-3 text-sm text-[#8B6B5B]">
+                  Loading secure payment service...
+                </p>
+              ) : null}
             </div>
           </section>
 
@@ -1438,7 +1657,8 @@ export default function CheckoutPage() {
                   applyingCoupon ||
                   loadingShippingSettings ||
                   cart.length === 0 ||
-                  hasInvalidReservation
+                  hasInvalidReservation ||
+                  !razorpayReady
                 }
                 className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-[#5A2D2D] px-6 py-4 text-lg font-semibold text-white transition hover:bg-[#4B2E2E] disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -1449,7 +1669,7 @@ export default function CheckoutPage() {
                       className="animate-spin"
                     />
 
-                    Placing Order...
+                    Processing Payment...
                   </>
                 ) : hasInvalidReservation ? (
                   <>
@@ -1465,7 +1685,7 @@ export default function CheckoutPage() {
                       size={20}
                     />
 
-                    Place Order
+                    Pay Securely
                   </>
                 )}
               </button>

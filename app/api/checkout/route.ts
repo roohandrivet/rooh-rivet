@@ -1196,6 +1196,22 @@ export async function POST(
       );
     }
 
+    if (
+      paymentMethod ===
+      "Credit / Debit Card"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Credit / Debit Card orders must be processed through the Razorpay checkout flow.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
     const supabase =
       getSupabaseAdmin();
 
