@@ -148,8 +148,8 @@ function BrandLogo({
         alt={`${storeName} logo`}
         className={
           size === "desktop"
-            ? "h-12 w-12 shrink-0 object-contain sm:h-[54px] sm:w-[54px]"
-            : "h-12 w-12 shrink-0 object-contain"
+            ? "h-9 w-9 shrink-0 object-contain min-[380px]:h-10 min-[380px]:w-10 sm:h-[54px] sm:w-[54px]"
+            : "h-11 w-11 shrink-0 object-contain sm:h-12 sm:w-12"
         }
       />
     );
@@ -385,11 +385,11 @@ export default function Navbar() {
         ) : null}
 
         <div className="border-b border-[#E8DDD3]">
-          <div className="mx-auto flex h-24 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:gap-6 lg:px-10">
+          <div className="mx-auto flex h-20 w-full max-w-7xl items-center justify-between gap-2 px-3 min-[380px]:gap-3 min-[380px]:px-4 sm:h-24 sm:px-6 lg:gap-6 lg:px-10">
             <Link
               href="/"
               aria-label={`${settings.store_name} home`}
-              className="flex min-w-0 shrink-0 items-center gap-3 sm:gap-4"
+              className="flex min-w-0 flex-1 items-center gap-1.5 min-[380px]:gap-2 sm:gap-4"
             >
               <BrandLogo
                 logoUrl={
@@ -401,15 +401,15 @@ export default function Navbar() {
                 size="desktop"
               />
 
-              <div className="hidden min-w-0 sm:block">
-                <p className="truncate font-serif text-[2.15rem] leading-none text-[#4B2E2E]">
+              <div className="min-w-0 flex-1">
+                <p className="whitespace-nowrap font-serif text-[clamp(1rem,4.5vw,2.15rem)] leading-none text-[#4B2E2E]">
                   {
                     settings.store_name
                   }
                 </p>
 
                 {settings.tagline ? (
-                  <p className="mt-2 max-w-[280px] truncate text-[11px] uppercase tracking-[5px] text-[#8B6B5B] xl:tracking-[7px]">
+                  <p className="mt-1 hidden max-w-[280px] truncate text-[clamp(0.42rem,1.45vw,0.6875rem)] uppercase tracking-[0.18em] text-[#8B6B5B] min-[390px]:block sm:mt-2 sm:tracking-[0.32em] xl:tracking-[0.42em]">
                     {
                       settings.tagline
                     }
@@ -422,7 +422,7 @@ export default function Navbar() {
               <Search />
             </div>
 
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex shrink-0 items-center gap-1 min-[380px]:gap-1.5 sm:gap-3">
               <div className="hidden lg:block">
                 <CurrencySelector />
               </div>
@@ -435,7 +435,7 @@ export default function Navbar() {
                 title={
                   accountLabel
                 }
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-[#F3ECE5] transition hover:bg-[#E8DDD3]"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F3ECE5] transition hover:bg-[#E8DDD3] sm:h-11 sm:w-11"
               >
                 <User
                   size={22}
@@ -451,7 +451,7 @@ export default function Navbar() {
                     : "items"
                 }`}
                 title="Cart"
-                className="relative flex h-11 w-11 items-center justify-center rounded-full bg-[#F3ECE5] transition hover:bg-[#E8DDD3]"
+                className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F3ECE5] transition hover:bg-[#E8DDD3] sm:h-11 sm:w-11"
               >
                 <ShoppingBag
                   size={22}
@@ -477,7 +477,7 @@ export default function Navbar() {
                   menuOpen
                 }
                 aria-controls="mobile-navigation"
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-[#F3ECE5] transition hover:bg-[#E8DDD3]"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F3ECE5] transition hover:bg-[#E8DDD3] sm:h-11 sm:w-11"
               >
                 <Menu
                   size={24}
