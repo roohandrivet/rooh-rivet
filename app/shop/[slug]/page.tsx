@@ -42,6 +42,7 @@ interface Product {
   image_1: string | null;
   image_2: string | null;
   image_3: string | null;
+  video_url: string | null;
   category: string | null;
   stock: number | null;
   featured: boolean | null;
@@ -173,6 +174,7 @@ export default async function ProductPage({
         image_1,
         image_2,
         image_3,
+        video_url,
         category,
         stock,
         featured,

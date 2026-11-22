@@ -20,6 +20,7 @@ import {
   Loader2,
   Save,
   Upload,
+  Video,
   X,
 } from "lucide-react";
 
@@ -52,6 +53,7 @@ type ExistingProduct = {
   image_1: string | null;
   image_2: string | null;
   image_3: string | null;
+  video_url: string | null;
 };
 
 type UploadedImage = {
@@ -60,6 +62,8 @@ type UploadedImage = {
 };
 
 const MAX_IMAGES = 4;
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+const VIDEO_TYPES = new Set(["video/mp4", "video/webm"]);
 
 const INITIAL_FORM: ProductForm = {
   name: "",
@@ -140,15 +144,24 @@ export default function EditProductPage() {
   const [previews, setPreviews] = useState<string[]>([]);
   const [existingImages, setExistingImages] =
     useState<string[]>([]);
+  const [existingVideo, setExistingVideo] = useState<string | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoPreview, setVideoPreview] = useState<string | null>(null);
 
   const previewsRef = useRef<string[]>([]);
+  const videoPreviewRef = useRef<string | null>(null);
 
   useEffect(() => {
     previewsRef.current = previews;
   }, [previews]);
 
   useEffect(() => {
+    videoPreviewRef.current = videoPreview;
+  }, [videoPreview]);
+
+  useEffect(() => {
     return () => {
+      if (videoPreviewRef.current) URL.revokeObjectURL(videoPreviewRef.current);
       previewsRef.current.forEach((preview) => {
         URL.revokeObjectURL(preview);
       });
@@ -186,7 +199,8 @@ export default function EditProductPage() {
             image,
             image_1,
             image_2,
-            image_3
+            image_3,
+            video_url
           `
         )
         .eq("id", productId)
@@ -214,6 +228,8 @@ export default function EditProductPage() {
         active: product.active ?? true,
         reservationEnabled,
       });
+
+      setExistingVideo(product.video_url || null);
 
       setExistingImages(
         [
@@ -366,9 +382,62 @@ export default function EditProductPage() {
     setSuccess("");
   }
 
-  async function uploadImages(): Promise<UploadedImage[]> {
-    const uploadedImages: UploadedImage[] = [];
+  function handleVideo(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
 
+    if (!VIDEO_TYPES.has(file.type)) {
+      setError("Choose an MP4 or WEBM video.");
+      return;
+    }
+    if (file.size > MAX_VIDEO_BYTES) {
+      setError("Video must be 50 MB or smaller.");
+      return;
+    }
+
+    const preview = URL.createObjectURL(file);
+    setVideoPreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return preview;
+    });
+    setVideoFile(file);
+    setError("");
+    setSuccess("");
+  }
+
+  function removePendingVideo() {
+    setVideoFile(null);
+    setVideoPreview((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+    setError("");
+    setSuccess("");
+  }
+
+  function removeCurrentVideo() {
+    setExistingVideo(null); // The existing file stays in Storage until explicitly cleaned up.
+    removePendingVideo();
+  }
+
+  async function uploadVideo(file: File): Promise<UploadedImage> {
+    const extension = file.type === "video/webm" ? "webm" : "mp4";
+    const path = `videos/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await supabase.storage
+      .from("products")
+      .upload(path, file, {
+        cacheControl: "3600",
+        contentType: file.type,
+        upsert: false,
+      });
+
+    if (uploadError) throw uploadError;
+    const { data } = supabase.storage.from("products").getPublicUrl(path);
+    return { path, publicUrl: data.publicUrl };
+  }
+
+  async function uploadImages(uploadedImages: UploadedImage[]): Promise<void> {
     for (const file of files) {
       const extension = getFileExtension(file);
       const filePath =
@@ -400,7 +469,6 @@ export default function EditProductPage() {
       });
     }
 
-    return uploadedImages;
   }
 
   async function removeUploadedImages(
@@ -493,12 +561,16 @@ export default function EditProductPage() {
       return;
     }
 
-    let uploadedImages: UploadedImage[] = [];
+    const uploadedImages: UploadedImage[] = [];
+    let uploadedVideo: UploadedImage | null = null;
 
     try {
       setLoading(true);
 
-      uploadedImages = await uploadImages();
+      await uploadImages(uploadedImages);
+      if (videoFile) {
+        uploadedVideo = await uploadVideo(videoFile);
+      }
 
       const finalImages = [
         ...existingImages,
@@ -528,6 +600,7 @@ export default function EditProductPage() {
         image_1: finalImages[1] ?? null,
         image_2: finalImages[2] ?? null,
         image_3: finalImages[3] ?? null,
+        video_url: uploadedVideo?.publicUrl ?? existingVideo,
       };
 
       const {
@@ -548,6 +621,8 @@ export default function EditProductPage() {
       setFiles([]);
       setPreviews([]);
       setExistingImages(finalImages);
+      setExistingVideo(uploadedVideo?.publicUrl ?? existingVideo);
+      removePendingVideo();
       setSuccess("Product updated successfully.");
 
       router.push("/admin/products");
@@ -558,7 +633,10 @@ export default function EditProductPage() {
         updateError
       );
 
-      await removeUploadedImages(uploadedImages);
+      await removeUploadedImages([
+        ...uploadedImages,
+        ...(uploadedVideo ? [uploadedVideo] : []),
+      ]);
 
       setError(
         updateError instanceof Error
@@ -756,6 +834,68 @@ export default function EditProductPage() {
                   ))}
                 </div>
               </div>
+            ) : null}
+          </section>
+
+          <section className="rounded-3xl border border-[#E8DDD3] bg-white p-6 shadow-sm sm:p-8">
+            <div className="mb-6 flex items-center gap-3">
+              <Video size={26} className="text-[#8B6B5B]" />
+              <div>
+                <h2 className="font-serif text-2xl font-semibold text-[#4B2E2E]">
+                  Product Video (Optional)
+                </h2>
+                <p className="mt-2 text-sm text-[#7A6464]">
+                  Keep, remove or replace the video. MP4 or WEBM, up to 50 MB.
+                </p>
+              </div>
+            </div>
+
+            {videoPreview || existingVideo ? (
+              <div className="relative max-w-xl overflow-hidden rounded-2xl border border-[#E8DDD3] bg-[#211515]">
+                <video
+                  key={videoPreview ?? existingVideo ?? ""}
+                  src={videoPreview ?? existingVideo ?? undefined}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  className="aspect-video w-full object-contain"
+                  aria-label={`${form.name} product video preview`}
+                />
+                <button
+                  type="button"
+                  aria-label={videoPreview ? "Discard selected video" : "Remove current product video"}
+                  onClick={videoPreview ? removePendingVideo : removeCurrentVideo}
+                  disabled={loading}
+                  className="absolute right-3 top-3 rounded-full bg-red-600 p-2 text-white hover:bg-red-700 disabled:opacity-60"
+                >
+                  <X size={18} />
+                </button>
+                {videoPreview ? (
+                  <p className="p-3 text-xs text-white/80">New video: {videoFile?.name}</p>
+                ) : (
+                  <p className="p-3 text-xs text-white/80">Current product video</p>
+                )}
+              </div>
+            ) : null}
+
+            <label className="mt-5 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#D8C3B0] bg-[#FCFAF7] p-8 text-center transition hover:border-[#5A2D2D]">
+              <Upload size={34} className="mb-3 text-[#5A2D2D]" />
+              <span className="font-semibold text-[#4B2E2E]">
+                {videoPreview || existingVideo ? "Replace Product Video" : "Upload Product Video"}
+              </span>
+              <span className="mt-2 text-sm text-[#8B6B5B]">MP4 or WEBM · Max 50 MB</span>
+              <input
+                type="file"
+                accept="video/mp4,video/webm"
+                onChange={handleVideo}
+                disabled={loading}
+                className="hidden"
+              />
+            </label>
+            {videoPreview && existingVideo ? (
+              <p className="mt-3 text-sm text-[#8B6B5B]">
+                Your current video will remain until you save the product.
+              </p>
             ) : null}
           </section>
 

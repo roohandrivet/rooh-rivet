@@ -16,6 +16,7 @@ import {
   Loader2,
   Save,
   Upload,
+  Video,
   X,
 } from "lucide-react";
 
@@ -51,6 +52,8 @@ const INITIAL_FORM: ProductForm = {
 };
 
 const MAX_IMAGES = 4;
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+const VIDEO_TYPES = new Set(["video/mp4", "video/webm"]);
 
 function generateSlug(name: string): string {
   return name
@@ -92,15 +95,25 @@ export default function NewProductPage() {
   const [form, setForm] = useState<ProductForm>(INITIAL_FORM);
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoPreview, setVideoPreview] = useState<string | null>(null);
 
   const previewsRef = useRef<string[]>([]);
+  const videoPreviewRef = useRef<string | null>(null);
 
   useEffect(() => {
     previewsRef.current = previews;
   }, [previews]);
 
   useEffect(() => {
+    videoPreviewRef.current = videoPreview;
+  }, [videoPreview]);
+
+  useEffect(() => {
     return () => {
+      if (videoPreviewRef.current) {
+        URL.revokeObjectURL(videoPreviewRef.current);
+      }
       previewsRef.current.forEach((preview) => {
         URL.revokeObjectURL(preview);
       });
@@ -182,9 +195,54 @@ export default function NewProductPage() {
     );
   }
 
-  async function uploadImages(): Promise<UploadedImage[]> {
-    const uploadedImages: UploadedImage[] = [];
+  function handleVideo(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
 
+    if (!VIDEO_TYPES.has(file.type)) {
+      setError("Please choose an MP4 or WEBM video.");
+      return;
+    }
+    if (file.size > MAX_VIDEO_BYTES) {
+      setError("Product videos must be 50 MB or smaller.");
+      return;
+    }
+    const newPreview = URL.createObjectURL(file);
+    setVideoPreview((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return newPreview;
+    });
+    setVideoFile(file);
+    setError("");
+  }
+
+  function removeVideo() {
+    setVideoFile(null);
+    setVideoPreview((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return null;
+    });
+  }
+
+  async function uploadVideo(file: File): Promise<UploadedImage> {
+    const extension = file.type === "video/webm" ? "webm" : "mp4";
+    const path = `videos/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await supabase.storage
+      .from("products")
+      .upload(path, file, {
+        cacheControl: "3600",
+        contentType: file.type,
+        upsert: false,
+      });
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage.from("products").getPublicUrl(path);
+    return { path, publicUrl: data.publicUrl };
+  }
+
+  async function uploadImages(uploadedImages: UploadedImage[]): Promise<void> {
     for (const file of files) {
       const extension = getFileExtension(file);
       const filePath = `${Date.now()}-${crypto.randomUUID()}.${extension}`;
@@ -210,8 +268,6 @@ export default function NewProductPage() {
         publicUrl: publicUrlData.publicUrl,
       });
     }
-
-    return uploadedImages;
   }
 
   async function removeUploadedImages(
@@ -282,7 +338,8 @@ export default function NewProductPage() {
       return;
     }
 
-    let uploadedImages: UploadedImage[] = [];
+    const uploadedImages: UploadedImage[] = [];
+    let uploadedVideo: UploadedImage | null = null;
 
     try {
       setLoading(true);
@@ -307,7 +364,10 @@ export default function NewProductPage() {
         return;
       }
 
-      uploadedImages = await uploadImages();
+      await uploadImages(uploadedImages);
+      if (videoFile) {
+        uploadedVideo = await uploadVideo(videoFile);
+      }
 
       const imageUrls = uploadedImages.map(
         (image) => image.publicUrl
@@ -332,6 +392,7 @@ export default function NewProductPage() {
           image_1: imageUrls[1] ?? null,
           image_2: imageUrls[2] ?? null,
           image_3: imageUrls[3] ?? null,
+          video_url: uploadedVideo?.publicUrl ?? null,
         });
 
       if (insertError) {
@@ -345,13 +406,17 @@ export default function NewProductPage() {
       setForm(INITIAL_FORM);
       setFiles([]);
       setPreviews([]);
+      removeVideo();
 
       router.push("/admin/products");
       router.refresh();
     } catch (submitError) {
       console.error("Failed to save product:", submitError);
 
-      await removeUploadedImages(uploadedImages);
+      await removeUploadedImages([
+        ...uploadedImages,
+        ...(uploadedVideo ? [uploadedVideo] : []),
+      ]);
 
       setError(
         submitError instanceof Error
@@ -472,6 +537,55 @@ export default function NewProductPage() {
                 ))}
               </div>
             ) : null}
+            <div className="mt-10 border-t border-[#E8DDD3] pt-8">
+              <div className="mb-5 flex items-center gap-3">
+                <Video size={26} className="text-[#8B6B5B]" />
+                <div>
+                  <h2 className="font-serif text-2xl font-semibold text-[#4B2E2E]">
+                    Product Video (Optional)
+                  </h2>
+                  <p className="mt-1 text-sm text-[#7A6464]">
+                    Upload one MP4 or WEBM video, up to 50 MB.
+                  </p>
+                </div>
+              </div>
+
+              {!videoPreview ? (
+                <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#D8C3B0] bg-[#FCFAF7] p-8 text-center transition hover:border-[#5A2D2D] hover:bg-[#F8F4EF]">
+                  <Video size={38} className="mb-3 text-[#5A2D2D]" />
+                  <span className="font-semibold text-[#4B2E2E]">Upload Product Video</span>
+                  <span className="mt-2 text-sm text-[#8B6B5B]">MP4 or WEBM · Maximum 50 MB</span>
+                  <input
+                    type="file"
+                    accept="video/mp4,video/webm"
+                    onChange={handleVideo}
+                    disabled={loading}
+                    className="hidden"
+                  />
+                </label>
+              ) : (
+                <div className="relative max-w-md overflow-hidden rounded-2xl border border-[#E8DDD3] bg-stone-950">
+                  <video
+                    src={videoPreview}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="aspect-video w-full object-contain"
+                    aria-label="Product video preview"
+                  />
+                  <button
+                    type="button"
+                    onClick={removeVideo}
+                    disabled={loading}
+                    aria-label="Remove product video"
+                    className="absolute right-2 top-2 rounded-full bg-red-600 p-2 text-white transition hover:bg-red-700 disabled:opacity-60"
+                  >
+                    <X size={16} />
+                  </button>
+                  <p className="px-3 py-2 text-xs text-white/80">{videoFile?.name}</p>
+                </div>
+              )}
+            </div>
           </section>
 
           <section className="rounded-3xl border border-[#E8DDD3] bg-white p-6 shadow-sm sm:p-8">
