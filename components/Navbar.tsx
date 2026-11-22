@@ -74,28 +74,12 @@ const MAIN_NAVIGATION: NavigationItem[] = [
   },
 ];
 
-const COLLECTION_LINKS: NavigationItem[] = [
-  {
-    title: "Necklaces",
-    href: "/shop?category=necklaces",
-  },
-  {
-    title: "Earrings",
-    href: "/shop?category=earrings",
-  },
-  {
-    title: "Bracelets",
-    href: "/shop?category=bracelets",
-  },
-  {
-    title: "Rings",
-    href: "/shop?category=rings",
-  },
-  {
-    title: "Bridal Collection",
-    href: "/shop?category=bridal",
-  },
-];
+// Shop collections are derived from active products with available stock.
+// No category names are hardcoded here.
+type ProductCategoryRow = {
+  category: string | null;
+};
+
 
 function mapSettings(
   row:
@@ -197,6 +181,12 @@ export default function Navbar() {
     loggedIn,
     setLoggedIn,
   ] = useState(false);
+
+  const [collectionLinks, setCollectionLinks] =
+    useState<NavigationItem[]>([]);
+  const [collectionsLoading, setCollectionsLoading] =
+    useState(false);
+  const [shopExpanded, setShopExpanded] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -312,8 +302,66 @@ export default function Navbar() {
     };
   }, []);
 
+  // Load the current list whenever the menu opens. This means a category
+  // appears automatically after an active, in-stock product is added in admin.
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    let active = true;
+
+    async function loadCollections(): Promise<void> {
+      setCollectionsLoading(true);
+
+      const categories = new Map<string, string>();
+      const PAGE_SIZE = 1000;
+      let offset = 0;
+
+      try {
+        while (true) {
+          const { data, error } = await supabase
+            .from("products")
+            .select("category")
+            .eq("active", true)
+            .gt("stock", 0)
+            .range(offset, offset + PAGE_SIZE - 1);
+
+          if (error) throw error;
+
+          const rows = (data ?? []) as ProductCategoryRow[];
+          for (const row of rows) {
+            const name = row.category?.trim();
+            if (name && !categories.has(name.toLowerCase())) {
+              categories.set(name.toLowerCase(), name);
+            }
+          }
+
+          if (rows.length < PAGE_SIZE) break;
+          offset += PAGE_SIZE;
+        }
+
+        const nextLinks = Array.from(categories.values())
+          .sort((a, b) => a.localeCompare(b))
+          .map((category) => ({
+            title: category,
+            href: `/shop?category=${encodeURIComponent(category.toLowerCase())}`,
+          }));
+
+        if (active) setCollectionLinks(nextLinks);
+      } catch (error) {
+        console.error("Navbar collections load failed:", error);
+        // Keep previously loaded links if the request fails.
+      } finally {
+        if (active) setCollectionsLoading(false);
+      }
+    }
+
+    void loadCollections();
+    return () => { active = false; };
+  }, [menuOpen]);
+
   useEffect(() => {
     setMenuOpen(false);
+    setShopExpanded(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -568,65 +616,66 @@ export default function Navbar() {
             aria-label="Main navigation"
             className="space-y-1"
           >
-            {navigationItems.map(
-              (item) => (
+            {navigationItems.map((item) =>
+              item.href === "/shop" ? (
+                <div key={item.title}>
+                  <button
+                    type="button"
+                    onClick={() => setShopExpanded((open) => !open)}
+                    aria-expanded={shopExpanded}
+                    aria-controls="shop-subcategories"
+                    className="flex w-full items-center justify-between border-b border-[#F0E8E1] py-5 text-left text-lg text-[#4B2E2E] transition hover:text-[#8B6B5B]"
+                  >
+                    <span>{item.title}</span>
+                    <ChevronRight
+                      size={18}
+                      className={`transition-transform duration-200 ${shopExpanded ? "rotate-90" : ""}`}
+                    />
+                  </button>
+
+                  {shopExpanded && (
+                    <div
+                      id="shop-subcategories"
+                      className="space-y-1 border-b border-[#F0E8E1] bg-[#FCFAF7] py-3 pl-5 pr-3"
+                    >
+                      <Link
+                        href="/shop"
+                        onClick={() => setMenuOpen(false)}
+                        className="block py-2.5 font-medium text-[#5A2D2D] transition hover:text-[#8B6B5B]"
+                      >
+                        All Jewellery
+                      </Link>
+                      {collectionLinks.map((category) => (
+                        <Link
+                          key={category.href}
+                          href={category.href}
+                          onClick={() => setMenuOpen(false)}
+                          className="block py-2.5 text-[#5A2D2D] transition hover:text-[#8B6B5B]"
+                        >
+                          {category.title}
+                        </Link>
+                      ))}
+                      {collectionsLoading && collectionLinks.length === 0 && (
+                        <p className="py-2 text-sm text-[#8B6B5B]" role="status">
+                          Loading collections...
+                        </p>
+                      )}
+                      {!collectionsLoading && collectionLinks.length === 0 && (
+                        <p className="py-2 text-sm text-[#8B6B5B]">
+                          No categories available right now.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
                 <Link
-                  key={
-                    item.title
-                  }
-                  href={
-                    item.href
-                  }
-                  onClick={() =>
-                    setMenuOpen(
-                      false
-                    )
-                  }
-                  className="flex items-center justify-between border-b border-[#F0E8E1] py-5 text-lg text-[#4B2E2E] transition hover:text-[#8B6B5B]"
+                  key={item.title}
+                  href={item.href}
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center border-b border-[#F0E8E1] py-5 text-lg text-[#4B2E2E] transition hover:text-[#8B6B5B]"
                 >
-                  <span>
-                    {
-                      item.title
-                    }
-                  </span>
-
-                  <ChevronRight
-                    size={18}
-                  />
-                </Link>
-              )
-            )}
-          </nav>
-
-          <hr className="my-8 border-[#E8DDD3]" />
-
-          <p className="mb-5 text-xs uppercase tracking-[6px] text-[#8B6B5B]">
-            Shop Collections
-          </p>
-
-          <nav
-            aria-label="Shop collections"
-            className="space-y-4"
-          >
-            {COLLECTION_LINKS.map(
-              (item) => (
-                <Link
-                  key={
-                    item.title
-                  }
-                  href={
-                    item.href
-                  }
-                  onClick={() =>
-                    setMenuOpen(
-                      false
-                    )
-                  }
-                  className="block text-[#5A2D2D] transition hover:text-[#8B6B5B]"
-                >
-                  {
-                    item.title
-                  }
+                  {item.title}
                 </Link>
               )
             )}

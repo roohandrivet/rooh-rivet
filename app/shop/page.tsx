@@ -56,24 +56,15 @@ type ShopCategory = {
   slug: string;
 };
 
-const categories: ShopCategory[] = [
-  {
-    name: "Necklaces",
-    slug: "necklaces",
-  },
-  {
-    name: "Earrings",
-    slug: "earrings",
-  },
-  {
-    name: "Bracelets",
-    slug: "bracelets",
-  },
-  {
-    name: "Rings",
-    slug: "rings",
-  },
-];
+type ShopPageProps = {
+  searchParams: Promise<{
+    category?: string | string[];
+  }>;
+};
+
+function normalizeCategory(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
 
 function toNumber(
   value: number | string | null
@@ -103,8 +94,14 @@ function isCurrentlyReserved(
   );
 }
 
-export default async function ShopPage() {
+export default async function ShopPage({
+  searchParams,
+}: ShopPageProps) {
   const supabase = await createClient();
+  const { category: requestedCategory } = await searchParams;
+  const selectedCategory = normalizeCategory(
+    typeof requestedCategory === "string" ? requestedCategory : ""
+  );
 
   const {
     data,
@@ -190,6 +187,29 @@ export default async function ShopPage() {
       ),
   }));
 
+  // Build categories from actual, active and in-stock products.
+  // The first product in a new category automatically makes it visible.
+  const categoryNames = new Map<string, string>();
+  for (const product of products) {
+    const name = product.category.trim();
+    if (!name || product.stock <= 0) continue;
+    const key = normalizeCategory(name);
+    if (!categoryNames.has(key)) categoryNames.set(key, name);
+  }
+
+  const categories: ShopCategory[] = Array.from(
+    categoryNames,
+    ([slug, name]) => ({ slug, name })
+  ).sort((a, b) => a.name.localeCompare(b.name));
+
+  const visibleProducts = selectedCategory
+    ? products.filter(
+        (product) =>
+          product.stock > 0 &&
+          normalizeCategory(product.category) === selectedCategory
+      )
+    : products;
+
   return (
     <main className="min-h-screen bg-[#F8F4EF]">
       <section className="px-6 py-20 text-center sm:px-8 sm:py-24">
@@ -234,7 +254,12 @@ export default async function ShopPage() {
         <div className="flex flex-wrap justify-center gap-4">
           <Link
             href="/shop"
-            className="rounded-full bg-[#5A2D2D] px-8 py-3 text-[#F1DECA]"
+            aria-current={!selectedCategory ? "page" : undefined}
+            className={`rounded-full px-8 py-3 transition ${
+              !selectedCategory
+                ? "bg-[#5A2D2D] text-[#F1DECA]"
+                : "bg-white text-[#9A7048] hover:bg-[#5A2D2D] hover:text-[#F1DECA]"
+            }`}
           >
             All
           </Link>
@@ -242,8 +267,13 @@ export default async function ShopPage() {
           {categories.map((category) => (
             <Link
               key={category.slug}
-              href={`/shop/category/${category.slug}`}
-              className="rounded-full bg-white px-8 py-3 text-[#9A7048] transition hover:bg-[#5A2D2D] hover:text-[#F1DECA]"
+              href={`/shop?category=${encodeURIComponent(category.slug)}`}
+              aria-current={selectedCategory === category.slug ? "page" : undefined}
+              className={`rounded-full px-8 py-3 transition ${
+                selectedCategory === category.slug
+                  ? "bg-[#5A2D2D] text-[#F1DECA]"
+                  : "bg-white text-[#9A7048] hover:bg-[#5A2D2D] hover:text-[#F1DECA]"
+              }`}
             >
               {category.name}
             </Link>
@@ -257,22 +287,23 @@ export default async function ShopPage() {
             Products could not be loaded.
             Please refresh the page.
           </div>
-        ) : products.length === 0 ? (
+        ) : visibleProducts.length === 0 ? (
           <div className="rounded-3xl border border-[#E8DDD3] bg-white px-6 py-14 text-center shadow-sm">
             <h2 className="font-serif text-3xl text-[#4B2E2E]">
-              The collection is being
-              prepared
+              {selectedCategory
+                ? "No available products in this category"
+                : "The collection is being prepared"}
             </h2>
 
             <p className="mx-auto mt-4 max-w-xl leading-7 text-[#7A6464]">
-              New handcrafted pieces will
-              appear here as soon as they
-              become available.
+              {selectedCategory
+                ? "Explore other collections or check back when new pieces arrive."
+                : "New handcrafted pieces will appear here as soon as they become available."}
             </p>
           </div>
         ) : (
           <ProductGrid
-            products={products}
+            products={visibleProducts}
           />
         )}
       </section>
