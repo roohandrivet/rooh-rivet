@@ -32,6 +32,9 @@ type ProductForm = {
   bestseller: boolean;
   active: boolean;
   reservationEnabled: boolean;
+  variantGroup: string;
+  colorName: string;
+  colorHex: string;
 };
 
 type UploadedImage = {
@@ -49,6 +52,9 @@ const INITIAL_FORM: ProductForm = {
   bestseller: false,
   active: true,
   reservationEnabled: false,
+  variantGroup: "",
+  colorName: "",
+  colorHex: "#752638",
 };
 
 const MAX_IMAGES = 4;
@@ -116,11 +122,33 @@ export default function NewProductPage() {
   const [form, setForm] = useState<ProductForm>(INITIAL_FORM);
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
+  const [variantGroups, setVariantGroups] = useState<string[]>([]);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
 
   const previewsRef = useRef<string[]>([]);
   const videoPreviewRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadGroups() {
+      const { data, error: groupsError } = await supabase
+        .from("products")
+        .select("variant_group")
+        .not("variant_group", "is", null);
+      if (groupsError) {
+        console.error("Failed to load variant groups", groupsError);
+        return;
+      }
+      if (!cancelled) {
+        setVariantGroups(Array.from(new Set((data ?? [])
+          .map((item) => item.variant_group as string | null)
+          .filter((group): group is string => Boolean(group?.trim())))).sort());
+      }
+    }
+    void loadGroups();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     previewsRef.current = previews;
@@ -337,6 +365,22 @@ export default function NewProductPage() {
       ? 1
       : Math.max(0, Math.floor(rawStock));
     const slug = generateSlug(name);
+    const variantGroup = form.variantGroup.trim().toLowerCase();
+    const colorName = form.colorName.trim();
+    const colorHex = form.colorHex.trim();
+    if (Boolean(variantGroup) !== Boolean(colorName)) {
+      setError("Provide both a variant group and a colour name, or leave both blank.");
+      return;
+    }
+    if (variantGroup && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(variantGroup)) {
+      setError("Variant group must use lowercase letters, numbers and hyphens (e.g. zaria-earrings).");
+      return;
+    }
+    if (variantGroup && !/^#[0-9a-fA-F]{6}$/.test(colorHex)) {
+      setError("Choose a valid six-digit colour (e.g. #752638).");
+      return;
+    }
+
 
     if (!name) {
       setError("Product name is required.");
@@ -406,6 +450,9 @@ export default function NewProductPage() {
         .insert({
           slug,
           name,
+          variant_group: variantGroup || null,
+          color_name: colorName || null,
+          color_hex: variantGroup ? colorHex : null,
           description: description || null,
           price,
           category: category || null,
@@ -737,6 +784,42 @@ export default function NewProductPage() {
                   disabled={loading}
                   className="w-full resize-y rounded-xl border border-[#D8C3B0] bg-white p-3.5 text-[#4B2E2E] outline-none transition focus:border-[#5A2D2D] focus:ring-2 focus:ring-[#5A2D2D]/10 disabled:cursor-not-allowed disabled:opacity-60"
                 />
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-[#E8DDD3] bg-white p-6 shadow-sm sm:p-8">
+            <h2 className="font-serif text-2xl font-semibold text-[#4B2E2E]">Colour Variants</h2>
+            <p className="mt-2 mb-6 text-sm text-[#7A6464]">
+              Keep this colour as its own listing and product page. Use the same variant group
+              on all colours of a design to link them together. Leave blank for standalone products.
+            </p>
+            <div className="grid gap-5 md:grid-cols-2">
+              <div>
+                <label htmlFor="variant-group" className="mb-2 block font-medium text-[#4B2E2E]">Variant Group</label>
+                <input id="variant-group" list="variant-groups" value={form.variantGroup}
+                  onChange={(event) => updateField("variantGroup", event.target.value)}
+                  placeholder="zaria-earrings" disabled={loading}
+                  className="w-full rounded-xl border border-[#D8C3B0] p-3.5" />
+                <datalist id="variant-groups">{variantGroups.map(group => <option key={group} value={group} />)}</datalist>
+                <p className="mt-2 text-xs text-[#8B6B5B]">Select an existing group or type a new group ID.</p>
+              </div>
+              <div>
+                <label htmlFor="colour-name" className="mb-2 block font-medium text-[#4B2E2E]">Colour Name</label>
+                <input id="colour-name" value={form.colorName}
+                  onChange={(event) => updateField("colorName", event.target.value)}
+                  placeholder="Maroon" disabled={loading}
+                  className="w-full rounded-xl border border-[#D8C3B0] p-3.5" />
+              </div>
+              <div>
+                <label htmlFor="colour-hex" className="mb-2 block font-medium text-[#4B2E2E]">Colour Swatch</label>
+                <div className="flex items-center gap-3">
+                  <input id="colour-hex" type="color" value={form.colorHex}
+                    onChange={(event) => updateField("colorHex", event.target.value)}
+                    disabled={loading || !form.variantGroup.trim()}
+                    className="h-12 w-16 cursor-pointer rounded-lg border border-[#D8C3B0] p-1" />
+                  <span className="text-sm text-[#8B6B5B]">{form.colorHex}</span>
+                </div>
               </div>
             </div>
           </section>

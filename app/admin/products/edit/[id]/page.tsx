@@ -36,6 +36,9 @@ type ProductForm = {
   bestseller: boolean;
   active: boolean;
   reservationEnabled: boolean;
+  variantGroup: string;
+  colorName: string;
+  colorHex: string;
 };
 
 type ExistingProduct = {
@@ -54,6 +57,9 @@ type ExistingProduct = {
   image_2: string | null;
   image_3: string | null;
   video_url: string | null;
+  variant_group: string | null;
+  color_name: string | null;
+  color_hex: string | null;
 };
 
 type UploadedImage = {
@@ -75,6 +81,9 @@ const INITIAL_FORM: ProductForm = {
   bestseller: false,
   active: true,
   reservationEnabled: false,
+  variantGroup: "",
+  colorName: "",
+  colorHex: "#752638",
 };
 
 function getFileExtension(file: File): string {
@@ -145,6 +154,7 @@ export default function EditProductPage() {
   const [existingImages, setExistingImages] =
     useState<string[]>([]);
   const [existingVideo, setExistingVideo] = useState<string | null>(null);
+  const [variantGroups, setVariantGroups] = useState<string[]>([]);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
 
@@ -166,6 +176,34 @@ export default function EditProductPage() {
         URL.revokeObjectURL(preview);
       });
     };
+  }, []);
+
+  // Suggest existing groups to prevent typos when linking colours.
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchVariantGroups() {
+      const { data, error: groupsError } = await supabase
+        .from("products")
+        .select("variant_group")
+        .not("variant_group", "is", null);
+      if (groupsError) {
+        console.error("Could not load variant groups:", groupsError);
+        return;
+      }
+      if (!cancelled) {
+        setVariantGroups(
+          Array.from(new Set(
+            (data ?? [])
+              .map((item) => item.variant_group)
+              .filter((value): value is string =>
+                typeof value === "string" && value.trim().length > 0
+              )
+          )).sort()
+        );
+      }
+    }
+    void fetchVariantGroups();
+    return () => { cancelled = true; };
   }, []);
 
   const loadProduct = useCallback(async () => {
@@ -200,7 +238,10 @@ export default function EditProductPage() {
             image_1,
             image_2,
             image_3,
-            video_url
+            video_url,
+            variant_group,
+            color_name,
+            color_hex
           `
         )
         .eq("id", productId)
@@ -227,6 +268,9 @@ export default function EditProductPage() {
         bestseller: product.bestseller ?? false,
         active: product.active ?? true,
         reservationEnabled,
+        variantGroup: product.variant_group ?? "",
+        colorName: product.color_name ?? "",
+        colorHex: product.color_hex ?? "#752638",
       });
 
       setExistingVideo(product.video_url || null);
@@ -511,6 +555,9 @@ export default function EditProductPage() {
     const category = form.category.trim();
     const price = Number(form.price);
     const rawStock = Number(form.stock);
+    const variantGroup = form.variantGroup.trim().toLowerCase();
+    const colorName = form.colorName.trim();
+    const colorHex = form.colorHex.trim();
 
     const stock = form.reservationEnabled
       ? 1
@@ -561,6 +608,21 @@ export default function EditProductPage() {
       return;
     }
 
+    if ((variantGroup && !colorName) || (!variantGroup && colorName)) {
+      setError("For a colour variant, enter both a variant group and a colour name.");
+      return;
+    }
+
+    if (variantGroup && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(variantGroup)) {
+      setError("Use lowercase letters, numbers and hyphens for the variant group (e.g. zaria-earrings).");
+      return;
+    }
+
+    if (variantGroup && !/^#[0-9a-fA-F]{6}$/.test(colorHex)) {
+      setError("Choose a valid colour swatch.");
+      return;
+    }
+
     const uploadedImages: UploadedImage[] = [];
     let uploadedVideo: UploadedImage | null = null;
 
@@ -581,6 +643,9 @@ export default function EditProductPage() {
 
       const updatePayload = {
         name,
+        variant_group: variantGroup || null,
+        color_name: variantGroup ? colorName : null,
+        color_hex: variantGroup ? colorHex : null,
         description: description || null,
         price,
         category: category || null,
@@ -1025,6 +1090,68 @@ export default function EditProductPage() {
                   disabled={loading}
                   className="w-full resize-y rounded-xl border border-[#D8C3B0] bg-white p-3.5 text-[#4B2E2E] outline-none transition focus:border-[#5A2D2D] focus:ring-2 focus:ring-[#5A2D2D]/10 disabled:cursor-not-allowed disabled:opacity-60"
                 />
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-[#E8DDD3] bg-white p-6 shadow-sm sm:p-8">
+            <h2 className="font-serif text-2xl font-semibold text-[#4B2E2E]">
+              Colour Variants (Optional)
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[#7A6464]">
+              Each colour stays a separate product on the shop. Use the same
+              variant group for all colours of a design, such as zaria-earrings.
+              Existing groups appear as suggestions while you type.
+            </p>
+            <div className="mt-6 grid gap-6 md:grid-cols-2">
+              <div>
+                <label htmlFor="variant-group" className="mb-2 block font-medium text-[#4B2E2E]">
+                  Variant Group
+                </label>
+                <input
+                  id="variant-group"
+                  list="existing-variant-groups"
+                  value={form.variantGroup}
+                  onChange={(event) => updateField("variantGroup", event.target.value)}
+                  placeholder="zaria-earrings"
+                  disabled={loading}
+                  className="w-full rounded-xl border border-[#D8C3B0] bg-white p-3.5 text-[#4B2E2E]"
+                />
+                <datalist id="existing-variant-groups">
+                  {variantGroups.map((group) => (
+                    <option key={group} value={group} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label htmlFor="color-name" className="mb-2 block font-medium text-[#4B2E2E]">
+                  Colour Name
+                </label>
+                <input
+                  id="color-name"
+                  value={form.colorName}
+                  onChange={(event) => updateField("colorName", event.target.value)}
+                  placeholder="Maroon"
+                  disabled={loading}
+                  className="w-full rounded-xl border border-[#D8C3B0] bg-white p-3.5 text-[#4B2E2E]"
+                />
+              </div>
+              <div>
+                <label htmlFor="color-hex" className="mb-2 block font-medium text-[#4B2E2E]">
+                  Colour Swatch
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="color-hex"
+                    type="color"
+                    value={/^#[0-9a-fA-F]{6}$/.test(form.colorHex) ? form.colorHex : "#752638"}
+                    onChange={(event) => updateField("colorHex", event.target.value)}
+                    disabled={loading}
+                    aria-label="Choose colour swatch"
+                    className="h-12 w-16 cursor-pointer rounded-lg border border-[#D8C3B0] bg-white p-1"
+                  />
+                  <span className="text-sm text-[#7A6464]">{form.colorHex}</span>
+                </div>
               </div>
             </div>
           </section>
