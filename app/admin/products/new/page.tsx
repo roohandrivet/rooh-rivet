@@ -53,7 +53,28 @@ const INITIAL_FORM: ProductForm = {
 
 const MAX_IMAGES = 4;
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
-const VIDEO_TYPES = new Set(["video/mp4", "video/webm"]);
+const VIDEO_TYPES = new Set([
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "video/x-quicktime",
+]);
+
+function getVideoFormat(file: File): "mp4" | "webm" | "mov" | null {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+
+  if (extension === "mp4" || extension === "webm" || extension === "mov") {
+    return extension;
+  }
+
+  if (file.type === "video/mp4") return "mp4";
+  if (file.type === "video/webm") return "webm";
+  if (file.type === "video/quicktime" || file.type === "video/x-quicktime") {
+    return "mov";
+  }
+
+  return null;
+}
 
 function generateSlug(name: string): string {
   return name
@@ -200,8 +221,8 @@ export default function NewProductPage() {
     event.target.value = "";
     if (!file) return;
 
-    if (!VIDEO_TYPES.has(file.type)) {
-      setError("Please choose an MP4 or WEBM video.");
+    if (!getVideoFormat(file) || (file.type && !VIDEO_TYPES.has(file.type))) {
+      setError("Please choose an MP4, WEBM or iPhone MOV video.");
       return;
     }
     if (file.size > MAX_VIDEO_BYTES) {
@@ -226,13 +247,20 @@ export default function NewProductPage() {
   }
 
   async function uploadVideo(file: File): Promise<UploadedImage> {
-    const extension = file.type === "video/webm" ? "webm" : "mp4";
+    const extension = getVideoFormat(file);
+    if (!extension) throw new Error("Unsupported video format.");
+    const contentType =
+      extension === "mov"
+        ? "video/quicktime"
+        : extension === "webm"
+          ? "video/webm"
+          : "video/mp4";
     const path = `videos/${crypto.randomUUID()}.${extension}`;
     const { error: uploadError } = await supabase.storage
       .from("products")
       .upload(path, file, {
         cacheControl: "3600",
-        contentType: file.type,
+        contentType,
         upsert: false,
       });
 
@@ -545,7 +573,7 @@ export default function NewProductPage() {
                     Product Video (Optional)
                   </h2>
                   <p className="mt-1 text-sm text-[#7A6464]">
-                    Upload one MP4 or WEBM video, up to 50 MB.
+                    Upload one MP4, WEBM or iPhone MOV video, up to 50 MB.
                   </p>
                 </div>
               </div>
@@ -554,10 +582,10 @@ export default function NewProductPage() {
                 <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#D8C3B0] bg-[#FCFAF7] p-8 text-center transition hover:border-[#5A2D2D] hover:bg-[#F8F4EF]">
                   <Video size={38} className="mb-3 text-[#5A2D2D]" />
                   <span className="font-semibold text-[#4B2E2E]">Upload Product Video</span>
-                  <span className="mt-2 text-sm text-[#8B6B5B]">MP4 or WEBM · Maximum 50 MB</span>
+                  <span className="mt-2 text-sm text-[#8B6B5B]">MP4, WEBM or MOV · Maximum 50 MB</span>
                   <input
                     type="file"
-                    accept="video/mp4,video/webm"
+                    accept="video/mp4,video/webm,video/quicktime,.mov"
                     onChange={handleVideo}
                     disabled={loading}
                     className="hidden"
