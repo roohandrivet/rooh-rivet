@@ -25,6 +25,7 @@ import {
   supabase,
 } from "@/lib/supabase";
 import WishlistButton from "@/components/WishlistButton";
+import ProductColourVariants from "@/components/ProductColourVariants";
 
 interface Product {
   id: string;
@@ -41,6 +42,8 @@ interface Product {
   featured: boolean | null;
   active: boolean;
   bestseller: boolean | null;
+  variant_group?: string | null;
+  color_name?: string | null;
   reservation_enabled?:
     | boolean
     | null;
@@ -299,6 +302,12 @@ export default function ProductInfo({
           <h1 className="font-serif text-4xl font-semibold text-[#4B2E2E]">
             {product.name}
           </h1>
+
+          <ProductColourVariants
+            currentSlug={product.slug}
+            variantGroup={product.variant_group}
+            currentColour={product.color_name}
+          />
 
           <p className="text-3xl font-bold text-[#5A2D2D]">
             {formatPrice(

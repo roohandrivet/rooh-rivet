@@ -14,7 +14,6 @@ import { createClient } from "@/lib/supabase/server";
 import ProductSchema from "@/components/ProductSchema";
 import ProductAnalytics from "@/components/ProductAnalytics";
 import ProductRecommendations from "@/components/ProductRecommendations";
-import ProductColourVariants from "@/components/ProductColourVariants";
 
 import ProductGallery from "./components/ProductGallery";
 import ProductInfo from "./components/ProductInfo";
@@ -168,15 +167,7 @@ export default async function ProductPage({ params }: PageProps) {
         <div className="grid gap-12 lg:grid-cols-2 lg:items-start">
           <ProductGallery product={product} />
 
-          <div className="min-w-0">
-            <ProductInfo product={product} />
-
-            <ProductColourVariants
-              currentSlug={product.slug}
-              variantGroup={product.variant_group}
-              currentColour={product.color_name}
-            />
-          </div>
+          <ProductInfo product={product} />
         </div>
 
         <section className="mt-16">
